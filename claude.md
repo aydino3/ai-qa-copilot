@@ -130,11 +130,16 @@ ui/
 - Child is spawned with `cwd: FRAMEWORK_ROOT`, inherits `process.env`, uses `npx playwright test ...` with `--reporter=list,json`.
 - Verified end-to-end with a temporary `scripts/test-ws.mjs` harness (since removed): WS streamed live logs, terminal status closed the socket, concurrent POST correctly returned 409.
 
-### Step 4 — Frontend scaffold
-- `npm create vite@latest ui/web -- --template react-ts`
-- Install Tailwind, configure
-- Skeleton layout: sidebar (test list), main (controls + logs + results)
-- Vite proxy for `/api` and `/ws`
+### Step 4 — Frontend scaffold ✅
+- `ui/web` scaffolded directly (Vite + React 18 + TypeScript) — no interactive `npm create`
+- Tailwind 3 + PostCSS + Autoprefixer configured; `src/styles/index.css` imports the three `@tailwind` layers; `tailwind.config.js` scans `index.html` and `src/**/*.{ts,tsx}`
+- TypeScript split into `tsconfig.app.json` (app) + `tsconfig.node.json` (Vite config) with project-references root `tsconfig.json`
+- `react-router-dom` v6 wired: `BrowserRouter` in `main.tsx`, `<Routes>` in `App.tsx`, two routes:
+  - `/` → `Dashboard` placeholder (test list / run controls)
+  - `/runs/:runId` → `RunDetails` placeholder (WS log stream / results)
+- Header with `NavLink`s using Tailwind classes confirms styling pipeline works
+- Vite proxy: `/api` → `http://localhost:4000`, `/ws` → `ws://localhost:4000` (with `ws: true`)
+- Verified: `npm run build` clean — 36 modules transformed, Tailwind CSS emitted, no TS errors
 
 ### Step 5 — Wire frontend to backend
 - Test list fetch + render
@@ -165,4 +170,5 @@ Each step ends with: typecheck/build, `claude.md` update, ask for approval befor
 
 - **2026-05-12** — Step 1 complete: `claude.md` created.
 - **2026-05-12** — Step 2 complete: backend skeleton with `/api/health` and `/api/tests` working against the live framework.
-- **2026-05-12** — Step 3 complete: `POST /api/runs` spawns Playwright, `runRegistry` tracks state, `ws://…/ws/runs/:id` streams logs and terminal status. End-to-end verified, 409 conflict path verified. Awaiting approval to start Step 4 (frontend scaffold).
+- **2026-05-12** — Step 3 complete: `POST /api/runs` spawns Playwright, `runRegistry` tracks state, `ws://…/ws/runs/:id` streams logs and terminal status.
+- **2026-05-12** — Step 4 complete: `ui/web` scaffold (Vite + React + TS), Tailwind configured, React Router with Dashboard + RunDetails routes, `/api` + `/ws` proxied to `:4000`. `npm run build` clean. Awaiting approval to start Step 5 (wire frontend to backend).
