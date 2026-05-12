@@ -50,20 +50,15 @@ export abstract class BasePage {
     await expect.soft(locator, message).toHaveText(expected);
   }
 
-  // Polls a condition with a configurable interval before Playwright's built-in
-  // timeout kicks in — useful for slow eventually-consistent UI state.
+  // Polls a condition using Playwright's expect.toPass(), which integrates with
+  // the built-in retry engine and respects actionTimeout from the config.
   protected async waitForCondition(
     condition: () => Promise<boolean>,
-    { timeout = 10_000, interval = 500 } = {}
+    { timeout = 10_000 } = {}
   ): Promise<void> {
-    const deadline = Date.now() + timeout;
-
-    while (Date.now() < deadline) {
-      if (await condition()) return;
-      await this.page.waitForTimeout(interval);
-    }
-
-    throw new Error(`Condition not met within ${timeout}ms`);
+    await expect(async () => {
+      expect(await condition()).toBe(true);
+    }).toPass({ timeout });
   }
 
   async takeScreenshot(name: string): Promise<Buffer> {

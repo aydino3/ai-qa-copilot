@@ -74,16 +74,26 @@ export default class AIEnhancedReporter implements Reporter {
     // keeping the standard test run free of Anthropic SDK overhead.
     const { analyzeFailure } = await import('../ai/failure-analyzer');
 
-    for (const f of this.failures) {
-      console.log(`  ✗ ${f.title}`);
-      try {
-        const analysis = await analyzeFailure({ error: f.error, screenshotPaths: f.attachments });
-        console.log(`    [AI] ${analysis}`);
-      } catch {
-        console.log(`    [AI] Analysis unavailable`);
-        console.log(`    ${f.error}`);
+    const CONCURRENCY = 5;
+
+    for (let i = 0; i < this.failures.length; i += CONCURRENCY) {
+      const batch = this.failures.slice(i, i + CONCURRENCY);
+      const settled = await Promise.allSettled(
+        batch.map((f) => analyzeFailure({ error: f.error, screenshotPaths: f.attachments }))
+      );
+
+      for (let j = 0; j < batch.length; j++) {
+        const f = batch[j];
+        const result = settled[j];
+        console.log(`  ✗ ${f.title}`);
+        if (result.status === 'fulfilled') {
+          console.log(`    [AI] ${result.value}`);
+        } else {
+          console.log(`    [AI] Analysis unavailable`);
+          console.log(`    ${f.error}`);
+        }
+        console.log();
       }
-      console.log();
     }
   }
 }
