@@ -1,0 +1,30 @@
+{
+  "name": "ai-qa-copilot",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:regression": "playwright test --grep @regression",
+    "test:visual": "playwright test tests/visual/",
+    "test:api": "playwright test tests/api/",
+    "test:ci": "playwright test --shard=$SHARD_INDEX/$SHARD_TOTAL",
+    "report": "playwright show-report",
+    "lint": "eslint src tests --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.0",
+    "@faker-js/faker": "^8.4.1",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.1",
+    "@types/node": "^20.14.2",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-playwright": "^1.6.2",
+    "typescript": "^5.4.5"
+  }
+}
