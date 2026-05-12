@@ -160,10 +160,17 @@ ui/
 - Removed obsolete `/runs/preview` placeholder nav link.
 - Verified: `npm run build` clean (39 modules transformed, no TS errors).
 
-### Step 6 — Polish
-- Empty/error states, run cancellation, simple run-in-progress indicator
-- README update for the GUI; commands to start both servers
-- Final typecheck + manual smoke test of the full flow
+### Step 6 — Polish ✅
+- Added a `<Spinner>` component plus skeleton rows in the Dashboard test table while `/api/tests` resolves
+- RunDetails shows a "Loading run metadata…" spinner while `/api/runs/:id` resolves; replaces metadata bar once loaded
+- Improved Dashboard empty state with guidance pointing at discovery warnings + `.env` at the framework root
+- Network failures already surface as red error banners (loadError + startError + cancelError) — verified
+- Installed `concurrently` at the repo root and added:
+  - `npm run dev:ui` → starts backend + frontend together with prefixed labels (`server`, `web`)
+  - `npm run ui:server`, `npm run ui:web` — individual processes
+  - `npm run build:ui`, `npm run typecheck:ui` — workspace fan-out
+- Added `ui/README.md` documenting architecture, run lifecycle, scripts, configuration, and constraints
+- Final verification: `npm run typecheck` (framework) + `npm run typecheck:ui` (both UI packages) + `npm run build:ui` (both packages) — all clean
 
 Each step ends with: typecheck/build, `claude.md` update, ask for approval before moving on.
 
@@ -184,4 +191,5 @@ Each step ends with: typecheck/build, `claude.md` update, ask for approval befor
 - **2026-05-12** — Step 2 complete: backend skeleton with `/api/health` and `/api/tests` working against the live framework.
 - **2026-05-12** — Step 3 complete: `POST /api/runs` spawns Playwright, `runRegistry` tracks state, `ws://…/ws/runs/:id` streams logs and terminal status.
 - **2026-05-12** — Step 4 complete: `ui/web` scaffold (Vite + React + TS), Tailwind configured, React Router with Dashboard + RunDetails routes, `/api` + `/ws` proxied to `:4000`. `npm run build` clean.
-- **2026-05-12** — Step 5 complete: typed API client, `useRunStream` WS hook, `<Terminal>` component, Dashboard (test list + project/grep filters + Run), RunDetails (live logs, status badge, exit code, cancel). Build clean. Awaiting approval to start Step 6 (polish).
+- **2026-05-12** — Step 5 complete: typed API client, `useRunStream` WS hook, `<Terminal>` component, Dashboard (test list + project/grep filters + Run), RunDetails (live logs, status badge, exit code, cancel). Build clean.
+- **2026-05-12** — **Step 6 complete: project finished.** Loading states + skeletons + empty-state guidance, `concurrently`-powered `npm run dev:ui`, `ui/README.md`, and all-workspace typechecks + builds clean. The GUI is end-to-end functional on top of the unmodified framework.

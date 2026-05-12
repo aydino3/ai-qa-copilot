@@ -11,7 +11,12 @@
     "test:ci": "playwright test --shard=$SHARD_INDEX/$SHARD_TOTAL",
     "report": "playwright show-report",
     "lint": "eslint src tests --ext .ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ui:server": "npm --prefix ui/server run dev",
+    "ui:web": "npm --prefix ui/web run dev",
+    "dev:ui": "concurrently -n server,web -c blue,magenta \"npm:ui:server\" \"npm:ui:web\"",
+    "build:ui": "npm --prefix ui/server run build && npm --prefix ui/web run build",
+    "typecheck:ui": "npm --prefix ui/server run typecheck && npm --prefix ui/web run typecheck"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
@@ -23,6 +28,7 @@
     "@types/node": "^20.14.2",
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",
+    "concurrently": "^9.2.1",
     "eslint": "^8.57.0",
     "eslint-plugin-playwright": "^1.6.2",
     "typescript": "^5.4.5"

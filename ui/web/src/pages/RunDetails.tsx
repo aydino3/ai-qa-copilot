@@ -3,10 +3,12 @@ import { useParams, Link } from 'react-router-dom';
 import { cancelRun, fetchRun, type RunStatus, type RunSummary } from '../api/client';
 import { useRunStream } from '../hooks/useRunStream';
 import { Terminal } from '../components/Terminal';
+import { Spinner } from '../components/Spinner';
 
 export function RunDetails() {
   const { runId } = useParams<{ runId: string }>();
   const [summary, setSummary] = useState<RunSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
@@ -15,12 +17,16 @@ export function RunDetails() {
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
+    setSummaryLoading(true);
     fetchRun(runId)
       .then((r) => {
         if (!cancelled) setSummary(r);
       })
       .catch((err: Error) => {
         if (!cancelled) setSummaryError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
       });
     return () => {
       cancelled = true;
@@ -87,12 +93,16 @@ export function RunDetails() {
         </div>
       )}
 
-      <div className="text-xs text-slate-500 font-mono">
-        socket: {stream.socketState}
-        {summary?.args && summary.args.length > 0 && (
-          <> &nbsp;·&nbsp; args: {summary.args.join(' ')}</>
-        )}
-      </div>
+      {summaryLoading ? (
+        <Spinner label="Loading run metadata…" />
+      ) : (
+        <div className="text-xs text-slate-500 font-mono">
+          socket: {stream.socketState}
+          {summary?.args && summary.args.length > 0 && (
+            <> &nbsp;·&nbsp; args: {summary.args.join(' ')}</>
+          )}
+        </div>
+      )}
 
       <Terminal logs={stream.logs} />
     </section>

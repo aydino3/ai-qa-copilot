@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchTests, startRun, type DiscoveredTest } from '../api/client';
+import { Spinner } from '../components/Spinner';
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -61,9 +62,11 @@ export function Dashboard() {
     <section className="space-y-6">
       <header className="space-y-1">
         <h2 className="text-xl font-semibold">Dashboard</h2>
-        <p className="text-sm text-slate-400">
-          {loading ? 'Loading tests…' : `${tests.length} test(s) discovered`}
-        </p>
+        {loading ? (
+          <Spinner label="Discovering tests…" />
+        ) : (
+          <p className="text-sm text-slate-400">{tests.length} test(s) discovered</p>
+        )}
       </header>
 
       {loadError && (
@@ -143,22 +146,38 @@ export function Dashboard() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
-            {tests.map((t, i) => (
-              <tr key={`${t.file}:${t.line}:${t.projectName}:${i}`}>
-                <td className="px-3 py-2">{t.title}</td>
-                <td className="px-3 py-2 text-slate-400">{t.projectName}</td>
-                <td className="px-3 py-2 text-slate-400">
-                  {t.tags.map((tag) => `@${tag}`).join(' ')}
-                </td>
-                <td className="px-3 py-2 text-slate-500 font-mono text-xs">
-                  {t.file.split('/').slice(-2).join('/')}:{t.line}
-                </td>
-              </tr>
-            ))}
-            {!loading && tests.length === 0 && (
+            {loading &&
+              Array.from({ length: 4 }).map((_, i) => (
+                <tr key={`skeleton-${i}`} className="animate-pulse">
+                  <td className="px-3 py-2"><div className="h-3 bg-slate-800 rounded w-2/3" /></td>
+                  <td className="px-3 py-2"><div className="h-3 bg-slate-800 rounded w-16" /></td>
+                  <td className="px-3 py-2"><div className="h-3 bg-slate-800 rounded w-12" /></td>
+                  <td className="px-3 py-2"><div className="h-3 bg-slate-800 rounded w-1/2" /></td>
+                </tr>
+              ))}
+            {!loading &&
+              tests.map((t, i) => (
+                <tr key={`${t.file}:${t.line}:${t.projectName}:${i}`}>
+                  <td className="px-3 py-2">{t.title}</td>
+                  <td className="px-3 py-2 text-slate-400">{t.projectName}</td>
+                  <td className="px-3 py-2 text-slate-400">
+                    {t.tags.map((tag) => `@${tag}`).join(' ')}
+                  </td>
+                  <td className="px-3 py-2 text-slate-500 font-mono text-xs">
+                    {t.file.split('/').slice(-2).join('/')}:{t.line}
+                  </td>
+                </tr>
+              ))}
+            {!loading && tests.length === 0 && !loadError && (
               <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
-                  No tests discovered.
+                <td colSpan={4} className="px-3 py-10 text-center text-slate-500">
+                  <div className="space-y-1">
+                    <div className="text-slate-300">No tests discovered.</div>
+                    <div className="text-xs">
+                      Check the discovery warnings above or verify your Playwright
+                      config and <code>.env</code> file at the framework root.
+                    </div>
+                  </div>
                 </td>
               </tr>
             )}
