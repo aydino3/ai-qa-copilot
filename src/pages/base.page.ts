@@ -36,6 +36,13 @@ export abstract class BasePage {
     return this.page.getByTestId(testId);
   }
 
+  protected locateByLabel(
+    text: string | RegExp,
+    options?: Parameters<Page['getByLabel']>[1]
+  ): Locator {
+    return this.page.getByLabel(text, options);
+  }
+
   // Soft assertions accumulate failures without stopping the test;
   // Playwright flushes them at the end of each test automatically.
   protected async softAssertVisible(locator: Locator, message?: string): Promise<void> {
