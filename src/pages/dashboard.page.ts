@@ -13,16 +13,18 @@ export class DashboardPage extends BasePage {
   }
 
   private get logoutButton() {
-    return this.locateByRole('button', { name: /log.?out/i });
+    return this.locateByRole('button', { name: /^log.?out$/i });
   }
 
   protected override async waitForReady(): Promise<void> {
     await this.userMenu.waitFor({ state: 'visible' });
   }
 
-  // Called after a redirect-based arrival (post-login), not via goto(),
-  // so we assert rather than navigate — expect has built-in retry.
+  // Verifies the full authenticated contract: URL is correct AND the user
+  // menu is rendered. URL check rules out cases where the nav shell renders
+  // but the route guard hasn't redirected us yet.
   async assertAuthenticated(): Promise<void> {
+    await expect(this.page).toHaveURL(/\/dashboard/);
     await expect(this.userMenu).toBeVisible();
   }
 

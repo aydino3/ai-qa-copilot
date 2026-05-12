@@ -8,7 +8,7 @@ import { requireEnv } from '@utils/env';
 const USER_EMAIL = requireEnv('TEST_USER_EMAIL');
 const USER_PASSWORD = requireEnv('TEST_USER_PASSWORD');
 
-test.describe('Authentication @smoke', () => {
+test.describe('Authentication', () => {
   // Best-effort session cleanup so failed runs don't accumulate server-side
   // sessions across retries. Skipped fast when no session is active.
   test.afterEach(async ({ page }) => {
@@ -18,34 +18,35 @@ test.describe('Authentication @smoke', () => {
     }
   });
 
-  test('login → verify dashboard → logout → verify redirect', async ({ page }) => {
-    const loginPage = new LoginPage(page);
-    const dashboardPage = new DashboardPage(page);
+  test(
+    'login → verify dashboard → logout → verify redirect',
+    { tag: '@smoke' },
+    async ({ page }) => {
+      const loginPage = new LoginPage(page);
+      const dashboardPage = new DashboardPage(page);
 
-    await test.step('Navigate to login page', async () => {
-      await loginPage.goto();
-      await loginPage.assertVisible();
-    });
+      await test.step('Navigate to login page', async () => {
+        await loginPage.goto();
+        // Guard against a pre-existing session redirecting away from /login
+        await expect(page).toHaveURL(/\/login/);
+      });
 
-    await test.step('Submit valid credentials', async () => {
-      await loginPage.login(USER_EMAIL, USER_PASSWORD);
-    });
+      await test.step('Submit valid credentials', async () => {
+        await loginPage.login(USER_EMAIL, USER_PASSWORD);
+      });
 
-    await test.step('Verify redirect to dashboard', async () => {
-      await expect(page).toHaveURL(/\/dashboard/);
-    });
+      await test.step('Verify authenticated dashboard state', async () => {
+        await dashboardPage.assertAuthenticated();
+      });
 
-    await test.step('Verify authenticated user state', async () => {
-      await dashboardPage.assertAuthenticated();
-    });
+      await test.step('Logout', async () => {
+        await dashboardPage.logout();
+      });
 
-    await test.step('Logout', async () => {
-      await dashboardPage.logout();
-    });
-
-    await test.step('Verify redirect back to login', async () => {
-      await expect(page).toHaveURL(/\/login/);
-      await loginPage.assertVisible();
-    });
-  });
+      await test.step('Verify redirect back to login', async () => {
+        await expect(page).toHaveURL(/\/login/);
+        await loginPage.assertVisible();
+      });
+    }
+  );
 });

@@ -8,6 +8,10 @@ const IS_CI = !!process.env.CI;
 
 export default defineConfig({
   testDir: './tests',
+  // Extend Playwright's default to include our directory-based naming
+  // convention (smoke/regression/visual/api). Setup files are matched by
+  // the setup project's own testMatch and excluded from this pattern.
+  testMatch: '**/*.@(spec|test|smoke|regression|visual|api).?(c|m)[jt]s?(x)',
   fullyParallel: true,
   forbidOnly: IS_CI,
   retries: IS_CI ? 2 : 0,
