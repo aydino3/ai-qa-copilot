@@ -121,11 +121,14 @@ ui/
 - Filters Playwright's synthetic "No tests found" error so it doesn't leak through alongside real load-time errors
 - Verified: `npm run typecheck` clean; live `/api/health` and `/api/tests` smoke-tested against the real framework (5 tests discovered)
 
-### Step 3 — Run execution + WebSocket log streaming
-- `POST /api/runs` → spawns Playwright child process, returns `runId`
-- `runRegistry` keeps log buffer + status (`running`/`passed`/`failed`)
-- `ws://…/ws/runs/:id` streams stdout/stderr; replays buffered history on connect
-- `GET /api/runs/:id` returns parsed `results.json` once child exits
+### Step 3 — Run execution + WebSocket log streaming ✅
+- `POST /api/runs` accepts `{ grep?, project?, file? }`, returns `{ runId, pid, args }`. Returns `409` with `activeRunId` when a run is already active (only one concurrent run permitted).
+- `POST /api/runs/:id/cancel` sends `SIGTERM` to the child.
+- `GET /api/runs/:id` returns the run summary without logs (clients use WS for streaming) including `status`, `exitCode`, `args`, `results` (parsed `test-results/results.json`), and `errorMessage`.
+- `runRegistry` (EventEmitter) holds in-memory run state with a bounded log buffer (5000 chunks max) and emits `log` / `status` events.
+- `ws://localhost:4000/ws/runs/:id` upgrades on the HTTP server, replays buffered history on connect, sends a snapshot status, then streams live `{type:'log', stream, data, ts}` messages. On terminal status (`completed` / `failed` / `error`) the server broadcasts the final status and closes the socket. Connections to unknown `runId` receive `{type:'error', data:'run_not_found'}` and close.
+- Child is spawned with `cwd: FRAMEWORK_ROOT`, inherits `process.env`, uses `npx playwright test ...` with `--reporter=list,json`.
+- Verified end-to-end with a temporary `scripts/test-ws.mjs` harness (since removed): WS streamed live logs, terminal status closed the socket, concurrent POST correctly returned 409.
 
 ### Step 4 — Frontend scaffold
 - `npm create vite@latest ui/web -- --template react-ts`
@@ -161,4 +164,5 @@ Each step ends with: typecheck/build, `claude.md` update, ask for approval befor
 ## 7. Progress log
 
 - **2026-05-12** — Step 1 complete: `claude.md` created.
-- **2026-05-12** — Step 2 complete: backend skeleton with `/api/health` and `/api/tests` working against the live framework. Awaiting approval to start Step 3 (run execution + WebSocket log streaming).
+- **2026-05-12** — Step 2 complete: backend skeleton with `/api/health` and `/api/tests` working against the live framework.
+- **2026-05-12** — Step 3 complete: `POST /api/runs` spawns Playwright, `runRegistry` tracks state, `ws://…/ws/runs/:id` streams logs and terminal status. End-to-end verified, 409 conflict path verified. Awaiting approval to start Step 4 (frontend scaffold).
