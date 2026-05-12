@@ -17,14 +17,6 @@ export function App() {
           >
             Dashboard
           </NavLink>
-          <NavLink
-            to="/runs/preview"
-            className={({ isActive }) =>
-              isActive ? 'text-sky-400' : 'text-slate-400 hover:text-slate-200'
-            }
-          >
-            Run details (preview)
-          </NavLink>
         </nav>
       </header>
       <main className="flex-1 p-6">
