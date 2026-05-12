@@ -26,6 +26,12 @@ export class DashboardPage extends BasePage {
     await expect(this.userMenu).toBeVisible();
   }
 
+  // Non-retrying instant probe — used by best-effort cleanup hooks to skip
+  // when there's no session to tear down. Does NOT wait.
+  async hasActiveSession(): Promise<boolean> {
+    return this.userMenu.isVisible();
+  }
+
   async logout(): Promise<void> {
     await this.userMenu.click();
     await this.logoutButton.waitFor({ state: 'visible' });

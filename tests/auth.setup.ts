@@ -1,16 +1,7 @@
 import { test as setup, expect } from '@playwright/test';
 import * as fs from 'fs';
 import { authStatePaths, AUTH_STATE_DIR } from '@fixtures/auth.fixture';
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(
-      `Required environment variable "${name}" is not set. Copy .env.example to .env and fill in all values.`
-    );
-  }
-  return value;
-}
+import { requireEnv } from '@utils/env';
 
 // Validate all required vars before any test runs
 const USER_EMAIL = requireEnv('TEST_USER_EMAIL');

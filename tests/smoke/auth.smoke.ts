@@ -1,13 +1,23 @@
 import { test, expect } from '@fixtures/index';
 import { LoginPage } from '@pages/login.page';
 import { DashboardPage } from '@pages/dashboard.page';
+import { requireEnv } from '@utils/env';
 
-// Credentials are validated eagerly in tests/auth.setup.ts, which is a
-// dependency of every browser project. By the time this test runs they exist.
-const USER_EMAIL = process.env.TEST_USER_EMAIL!;
-const USER_PASSWORD = process.env.TEST_USER_PASSWORD!;
+// Validated at module load — fails fast with a named-variable error if missing,
+// independent of whether auth.setup ran for this invocation.
+const USER_EMAIL = requireEnv('TEST_USER_EMAIL');
+const USER_PASSWORD = requireEnv('TEST_USER_PASSWORD');
 
 test.describe('Authentication @smoke', () => {
+  // Best-effort session cleanup so failed runs don't accumulate server-side
+  // sessions across retries. Skipped fast when no session is active.
+  test.afterEach(async ({ page }) => {
+    const dashboard = new DashboardPage(page);
+    if (await dashboard.hasActiveSession()) {
+      await dashboard.logout().catch(() => { /* nothing to clean up */ });
+    }
+  });
+
   test('login → verify dashboard → logout → verify redirect', async ({ page }) => {
     const loginPage = new LoginPage(page);
     const dashboardPage = new DashboardPage(page);
