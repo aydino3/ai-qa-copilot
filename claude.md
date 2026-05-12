@@ -113,11 +113,13 @@ ui/
 ### Step 1 — Setup & planning (current)
 - Inspect repo, write this `claude.md`. **No code yet.**
 
-### Step 2 — Backend skeleton
-- Scaffold `ui/server` (Express + TypeScript + ws + tsx for dev)
-- Health endpoint, basic Express app, listen on `:4000`
-- `GET /api/tests` → shells `npx playwright test --list --reporter=json` and returns parsed test list
-- Typecheck + smoke-run the endpoint
+### Step 2 — Backend skeleton ✅
+- Scaffolded `ui/server` (Express + TypeScript + native `ws` dep + `tsx` for dev)
+- `GET /api/health` returns `{ ok, frameworkRoot }`
+- `GET /api/tests` shells `npx playwright test --list --reporter=json` from `FRAMEWORK_ROOT` and returns `{ count, tests, errors }`
+- Parser is resilient: non-zero exit + partial JSON is surfaced as `errors[]` instead of failing the request (handles e.g. missing env vars at framework module load)
+- Filters Playwright's synthetic "No tests found" error so it doesn't leak through alongside real load-time errors
+- Verified: `npm run typecheck` clean; live `/api/health` and `/api/tests` smoke-tested against the real framework (5 tests discovered)
 
 ### Step 3 — Run execution + WebSocket log streaming
 - `POST /api/runs` → spawns Playwright child process, returns `runId`
@@ -158,4 +160,5 @@ Each step ends with: typecheck/build, `claude.md` update, ask for approval befor
 
 ## 7. Progress log
 
-- **2026-05-12** — Step 1 complete: `claude.md` created. Awaiting approval to start Step 2 (backend skeleton).
+- **2026-05-12** — Step 1 complete: `claude.md` created.
+- **2026-05-12** — Step 2 complete: backend skeleton with `/api/health` and `/api/tests` working against the live framework. Awaiting approval to start Step 3 (run execution + WebSocket log streaming).
