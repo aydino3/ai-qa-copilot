@@ -11,10 +11,16 @@ const USER_PASSWORD = requireEnv('TEST_USER_PASSWORD');
 test.describe('Authentication', () => {
   // Best-effort session cleanup so failed runs don't accumulate server-side
   // sessions across retries. Skipped fast when no session is active.
-  test.afterEach(async ({ page }) => {
+  test.afterEach(async ({ page }, testInfo) => {
     const dashboard = new DashboardPage(page);
     if (await dashboard.hasActiveSession()) {
-      await dashboard.logout().catch(() => { /* nothing to clean up */ });
+      await dashboard.logout().catch((error: Error) => {
+        // Surface cleanup regressions in CI logs — silent swallowing would
+        // hide a renamed logout button until session limits are hit days later.
+        console.warn(
+          `[cleanup] logout failed for "${testInfo.title}": ${error.message}`
+        );
+      });
     }
   });
 

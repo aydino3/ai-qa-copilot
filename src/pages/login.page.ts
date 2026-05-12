@@ -18,8 +18,13 @@ export class LoginPage extends BasePage {
     return this.locateByRole('button', { name: 'Sign in' });
   }
 
+  // Scoped to the form that owns the Sign in button so role="alert" matches
+  // login errors only — not cookie banners, system toasts, or other live
+  // regions that share the alert role.
   private get errorAlert() {
-    return this.locateByRole('alert');
+    return this.page
+      .locator('form', { has: this.page.getByRole('button', { name: 'Sign in' }) })
+      .getByRole('alert');
   }
 
   // Override the networkidle default with an explicit, deterministic signal

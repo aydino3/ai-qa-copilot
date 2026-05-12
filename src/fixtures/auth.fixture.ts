@@ -1,7 +1,10 @@
 import { test as base, type Browser, type Page } from '@playwright/test';
 import * as path from 'path';
 
-export const AUTH_STATE_DIR = path.join(process.cwd(), '.auth');
+// Anchored to this file's location so it resolves to the same absolute path
+// regardless of where the test runner was invoked from (CI sub-shells,
+// monorepo tooling, IDE extensions that change CWD).
+export const AUTH_STATE_DIR = path.resolve(__dirname, '..', '..', '.auth');
 
 export const authStatePaths = {
   user: path.join(AUTH_STATE_DIR, 'user.json'),
