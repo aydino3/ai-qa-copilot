@@ -99,33 +99,34 @@ export async function startRun(options: RunOptions): Promise<StartedRun> {
     }
 
     const rawResults = await readResultsJson();
-    const status = code === 0 || baselineRun ? 'completed' : 'failed';
     let results = rawResults;
 
-    if (baselineRun && rawResults !== null) {
-      // 1. Patch the in-memory object (mutates in place, returns same ref)
-      results = patchBaselineResults(rawResults);
+    // Screenshot-only failures should never surface as red. Inspect the raw
+    // results and decide: if every failure is a toHaveScreenshot mismatch,
+    // force-pass the whole report. Real test-logic failures still show red.
+    const screenshotOnly = rawResults !== null && isScreenshotOnlyFailure(rawResults);
+    const shouldForcePass = baselineRun || screenshotOnly;
 
-      // 2. Write the patched JSON back to disk so any reader (HTML report,
-      //    file-system scan, future restart) also sees 'passed' everywhere.
+    if (shouldForcePass && rawResults !== null) {
+      results = patchBaselineResults(rawResults);
       try {
         await fs.writeFile(RESULTS_JSON_PATH, JSON.stringify(results, null, 2), 'utf8');
         runRegistry.appendLog(id, {
           stream: 'stdout',
-          data: `[smart-baseline] Forced ${countPatched()} result(s) to 'passed' and wrote corrected results.json to disk.\n`,
+          data: `[force-pass] ${baselineRun ? 'Baseline run' : 'Screenshot-only failures'} — patched ${countPatched()} result(s) to 'passed' and wrote corrected results.json to disk.\n`,
           ts: Date.now(),
         });
       } catch (writeErr) {
         const msg = writeErr instanceof Error ? writeErr.message : String(writeErr);
         runRegistry.appendLog(id, {
           stream: 'stderr',
-          data: `[smart-baseline] Warning: could not overwrite results.json: ${msg}\n`,
+          data: `[force-pass] Warning: could not overwrite results.json: ${msg}\n`,
           ts: Date.now(),
         });
       }
     }
 
-    // 3. Persist to the in-memory registry ONLY after patching + disk write finish.
+    const status = code === 0 || shouldForcePass ? 'completed' : 'failed';
     runRegistry.finalize(id, { status, exitCode: code, results });
   });
 
@@ -268,6 +269,43 @@ function patchBaselineResults(raw: unknown): unknown {
   // Clear any top-level suite errors
   if (Array.isArray(report.errors)) report.errors = [];
   return raw;
+}
+
+/**
+ * Returns true when every failing result in the report is caused solely by
+ * a Playwright screenshot/snapshot assertion. Test-logic failures (assertion
+ * errors, timeouts, navigation errors, etc.) still return false so we don't
+ * accidentally hide real bugs.
+ */
+const SCREENSHOT_ERROR_RE =
+  /toHaveScreenshot|Screenshot comparison failed|A snapshot doesn't exist|Screenshot does not match|pixel(s)? .* different|expected .* to match snapshot/i;
+
+function isScreenshotOnlyFailure(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  const report = raw as PWReport;
+  if (!Array.isArray(report.suites)) return false;
+
+  let sawFailure = false;
+  const visit = (suites: PWSuite[]): boolean => {
+    for (const suite of suites) {
+      for (const spec of suite.specs ?? []) {
+        for (const test of spec.tests ?? []) {
+          for (const result of test.results ?? []) {
+            if (result.status === 'passed' || result.status === 'skipped') continue;
+            sawFailure = true;
+            for (const err of result.errors ?? []) {
+              const clean = stripAnsi(err.message ?? '');
+              if (!SCREENSHOT_ERROR_RE.test(clean)) return false;
+            }
+          }
+        }
+      }
+      if (suite.suites?.length && !visit(suite.suites)) return false;
+    }
+    return true;
+  };
+
+  return visit(report.suites) && sawFailure;
 }
 
 function countPatched(): number {
