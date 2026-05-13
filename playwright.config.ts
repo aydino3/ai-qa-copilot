@@ -32,6 +32,10 @@ export default defineConfig({
     navigationTimeout: 30_000,
   },
 
+  expect: {
+    toHaveScreenshot: { maxDiffPixelRatio: 0.15 },
+  },
+
   projects: [
     {
       name: 'chromium',

@@ -7,10 +7,10 @@ import type {
 
 const PREFIX = '__UI_STEP__:';
 
-// Only surface user-authored test.step() blocks. Playwright internal
-// categories ('fixture', 'hook', 'pw:api', 'attach') are noise for the
-// timeline and are suppressed.
-const USER_CATEGORIES = new Set(['test']);
+// Only surface user-authored test.step() blocks. In Playwright 1.44+
+// the category for test.step() is 'test.step'. Internal categories
+// ('fixture', 'hook', 'pw:api', 'test.attach') are suppressed.
+const USER_CATEGORIES = new Set(['test.step']);
 
 class StepStreamReporter implements Reporter {
   private emit(payload: Record<string, unknown>): void {
