@@ -8,12 +8,12 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: API_TARGET, changeOrigin: true },
+      '/api': { target: API_TARGET, changeOrigin: true, timeout: 0, proxyTimeout: 0 },
       '/ws':  { target: API_TARGET.replace(/^http/, 'ws'), ws: true, changeOrigin: true },
       // Playwright artifacts (screenshots, videos, traces, snapshot baselines)
       // are served as static files by Express — proxy them so the browser can
       // reach them from the Vite dev server without a separate port.
-      '/test-results': { target: API_TARGET, changeOrigin: true },
+      '/test-results': { target: API_TARGET, changeOrigin: true, timeout: 0, proxyTimeout: 0 },
       '/tests':        { target: API_TARGET, changeOrigin: true },
     },
   },
