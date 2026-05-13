@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { fetchConfig, saveConfig } from '../api/client';
 import { Spinner } from '../components/Spinner';
 
-// Variables shown in a dedicated, labelled section at the top of the form.
 const PRIMARY_KEYS = [
   'BASE_URL',
   'API_BASE_URL',
@@ -67,16 +66,19 @@ export function Settings() {
   }
 
   return (
-    <section className="space-y-6 max-w-2xl">
-      <header>
-        <h2 className="text-xl font-semibold">Environment settings</h2>
+    <section className="space-y-8 max-w-2xl animate-slide-up">
+      <header className="space-y-1">
+        <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+          <span className="w-8 h-8 rounded-lg bg-gradient-brand flex items-center justify-center text-sm shadow-glow-sm">⚙</span>
+          Environment settings
+        </h2>
         {envPath && (
           <p className="text-xs text-slate-500 font-mono mt-0.5">{envPath}</p>
         )}
       </header>
 
       {loadError && (
-        <div className="rounded border border-rose-700 bg-rose-950/40 text-rose-200 text-sm p-3">
+        <div className="rounded-lg border border-rose-700/50 bg-rose-950/30 text-rose-300 text-sm p-4">
           Failed to load config: {loadError}
         </div>
       )}
@@ -85,53 +87,57 @@ export function Settings() {
         <Spinner label="Loading environment…" />
       ) : (
         <form
-          className="space-y-5"
+          className="space-y-6"
           onSubmit={(e) => { e.preventDefault(); void handleSave(); }}
         >
           <fieldset className="space-y-3">
-            <legend className="text-sm font-medium text-slate-300 mb-2">
+            <legend className="text-xs font-semibold text-slate-300 uppercase tracking-wide mb-3">
               Core variables
             </legend>
-            {primaryVars.map((key) => (
-              <EnvRow
-                key={key}
-                envKey={key}
-                value={vars[key] ?? ''}
-                description={KEY_DESCRIPTIONS[key]}
-                isPassword={PASSWORD_KEYS.has(key)}
-                onChange={(v) => update(key, v)}
-              />
-            ))}
-          </fieldset>
-
-          {otherKeys.length > 0 && (
-            <fieldset className="space-y-3">
-              <legend className="text-sm font-medium text-slate-300 mb-2">
-                Other variables
-              </legend>
-              {otherKeys.map((key) => (
+            <div className="card p-4 space-y-4">
+              {primaryVars.map((key) => (
                 <EnvRow
                   key={key}
                   envKey={key}
                   value={vars[key] ?? ''}
-                  isPassword={false}
+                  description={KEY_DESCRIPTIONS[key]}
+                  isPassword={PASSWORD_KEYS.has(key)}
                   onChange={(v) => update(key, v)}
                 />
               ))}
+            </div>
+          </fieldset>
+
+          {otherKeys.length > 0 && (
+            <fieldset className="space-y-3">
+              <legend className="text-xs font-semibold text-slate-300 uppercase tracking-wide mb-3">
+                Other variables
+              </legend>
+              <div className="card p-4 space-y-4">
+                {otherKeys.map((key) => (
+                  <EnvRow
+                    key={key}
+                    envKey={key}
+                    value={vars[key] ?? ''}
+                    isPassword={false}
+                    onChange={(v) => update(key, v)}
+                  />
+                ))}
+              </div>
             </fieldset>
           )}
 
-          <div className="flex items-center gap-4 pt-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-medium px-5 py-2 rounded text-sm"
-            >
-              {saving ? 'Saving…' : 'Save to .env'}
+          <div className="flex items-center gap-4 pt-1">
+            <button type="submit" disabled={saving} className="btn-primary">
+              {saving ? (
+                <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />Saving…</>
+              ) : (
+                <>💾 Save to .env</>
+              )}
             </button>
             {saveResult && (
               <span className={`text-sm ${saveResult.ok ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {saveResult.message}
+                {saveResult.ok ? '✓ ' : '✗ '}{saveResult.message}
               </span>
             )}
           </div>
@@ -154,24 +160,24 @@ function EnvRow({ envKey, value, description, isPassword, onChange }: EnvRowProp
   const inputType = isPassword && !show ? 'password' : 'text';
 
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-mono text-slate-300">
-        {envKey}
-        {description && <span className="text-slate-500 font-sans ml-2">{description}</span>}
+    <label className="flex flex-col gap-1.5">
+      <span className="flex items-center gap-2">
+        <span className="text-xs font-mono font-semibold text-brand-300">{envKey}</span>
+        {description && <span className="text-xs text-slate-500">{description}</span>}
       </span>
       <div className="flex gap-2">
         <input
           type={inputType}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm font-mono focus:border-sky-500 focus:outline-none"
+          className="input-mono flex-1 text-sm"
           placeholder={`${envKey}=`}
         />
         {isPassword && (
           <button
             type="button"
             onClick={() => setShow((s) => !s)}
-            className="text-xs text-slate-500 hover:text-slate-300 px-2"
+            className="btn-ghost text-xs px-3"
           >
             {show ? 'hide' : 'show'}
           </button>

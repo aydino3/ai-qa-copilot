@@ -8,27 +8,21 @@ interface TerminalProps {
 
 export function Terminal({ logs, emptyMessage = 'Waiting for output…' }: TerminalProps) {
   const ref = useRef<HTMLDivElement | null>(null);
-
-  // Auto-scroll to bottom on every new chunk.
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [logs]);
 
   return (
     <div
       ref={ref}
-      className="bg-black text-slate-200 font-mono text-xs leading-relaxed rounded-lg border border-slate-800 p-3 h-[28rem] overflow-y-auto whitespace-pre-wrap"
+      className="bg-black/60 text-slate-200 font-mono text-xs leading-relaxed rounded-lg p-3 h-[28rem] overflow-y-auto whitespace-pre-wrap"
     >
       {logs.length === 0 ? (
-        <span className="text-slate-500">{emptyMessage}</span>
+        <span className="text-slate-600">{emptyMessage}</span>
       ) : (
         logs.map((chunk, i) => (
-          <span
-            key={i}
-            className={chunk.stream === 'stderr' ? 'text-rose-400' : 'text-slate-200'}
-          >
+          <span key={i} className={chunk.stream === 'stderr' ? 'text-rose-400' : 'text-slate-300'}>
             {chunk.data}
           </span>
         ))

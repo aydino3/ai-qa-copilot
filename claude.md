@@ -215,3 +215,17 @@ Each step ends with: typecheck/build, `claude.md` update, ask for approval befor
   - Backend: `GET/POST /api/config` reads/writes `.env` safely (redacts `ANTHROPIC_API_KEY`, validates key format); `POST /api/generate-test` calls Claude `claude-sonnet-4-6` when `AI_ENABLED=true`+`ANTHROPIC_API_KEY` set, else returns a mock template. Generated files land in `tests/ai-generated/`.
   - Frontend: **Settings** page (env vars form with password reveal, primary/other sections, save feedback); **New Test** (AI Builder) page (URL + step textarea, inline code preview, "Go to Dashboard →" triggers auto-refresh); **Dashboard** polished with BASE_URL pill, project icons, tag colour chips, hover rows, spinner-in-button; sticky header with ◈ logo and three nav tabs.
   - All workspaces typecheck and build clean (42 frontend modules).
+
+- **2026-05-13** — Phase 5 (Generator fix + full UI/UX revamp):
+  - **Generator fix**: `generateMock()` in `ui/server/src/routes/generateTest.ts` completely rewritten — `targetUrl` is now the human-readable test title (strips `https://` prefix), each newline-delimited step from `steps` textarea becomes a real `test.step('user text', async () => {...})` block. Previously generated boilerplate that ignored user inputs entirely.
+  - **Tags support**: Added `tags?: string` field to `GenerateTestOptions` and `POST /api/generate-test`. `parseTags()` normalises comma/space-delimited input; tags merged with `@ai-generated` and `@visual` in both AI and mock paths. Tags field added to New Test form with preset toggles (@smoke, @regression, @visual) and free-form input.
+  - **Tailwind design system revamp** (`tailwind.config.js` + `src/styles/index.css`): `brand` palette (indigo/purple), `surface` palette (`#0d0d14` base), gradient utilities (`bg-gradient-brand`, `bg-gradient-card`), glow box shadows, `slide-up`/`fade-in` animations. Utility classes: `.btn-primary`, `.btn-ghost`, `.btn-danger`, `.card`, `.card-hover`, `.input`, `.input-mono`, `.tag-chip` variants, `.text-gradient`.
+  - **App.tsx revamp**: dark sticky header `bg-surface-1/80 backdrop-blur-xl`, gradient logo badge with glow, brand-coloured active nav tabs.
+  - **Dashboard revamp**: test cards grid (2-col / 3-col), `.card-hover` animations, BASE_URL pill, filter bar, `<TagChip>` component.
+  - **NewTest revamp**: preset tag toggle chips with active rings, `.card`/`.input`/`.btn-primary` throughout, code preview block.
+  - **Settings revamp**: `.card` fieldset wrappers, `.input-mono` fields, `.btn-primary` save button, brand-coloured key labels.
+  - **History revamp**: `.card` table with `bg-surface-3` header, brand-coloured status pills (rounded-full), brand-coloured links, exit code coloured green/red.
+  - **RunDetails revamp**: gradient brand logo badge, `.btn-danger` cancel, `.btn-ghost` back link, gradient active toggle on view switcher, improved socket-state display.
+  - **`<TagChip>`** new component: maps tag prefixes to correct CSS class (smoke/regression/visual/ai/default).
+  - **`<Spinner>`**, **`<Terminal>`**, **`<ManagerTimeline>`** updated to use brand colour tokens.
+  - Typecheck and build clean (45 frontend modules).

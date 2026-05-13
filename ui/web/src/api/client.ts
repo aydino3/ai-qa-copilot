@@ -109,6 +109,7 @@ export interface GenerateTestResponse {
 export interface GenerateTestOptions {
   targetUrl: string;
   steps: string;
+  tags?: string;
   visualRegression?: boolean;
 }
 

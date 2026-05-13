@@ -29,7 +29,6 @@ export function RunDetails() {
     return () => { cancelled = true; };
   }, [runId]);
 
-  // Refresh summary once the run terminates to pick up parsed results.
   useEffect(() => {
     if (!runId || !stream.status || stream.status === 'running') return;
     fetchRun(runId).then(setSummary).catch(() => { /* leave previous */ });
@@ -49,11 +48,14 @@ export function RunDetails() {
   }
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5 animate-slide-up">
       {/* Header */}
       <header className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="text-xl font-semibold">Run details</h2>
+        <div className="space-y-1">
+          <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+            <span className="w-8 h-8 rounded-lg bg-gradient-brand flex items-center justify-center text-sm shadow-glow-sm">▶</span>
+            Run details
+          </h2>
           <div className="text-xs text-slate-500 font-mono">{runId}</div>
         </div>
         <div className="flex items-center gap-3">
@@ -61,50 +63,61 @@ export function RunDetails() {
           <button
             onClick={handleCancel}
             disabled={!isRunning || cancelling}
-            className="bg-rose-700 hover:bg-rose-600 disabled:bg-slate-700 disabled:cursor-not-allowed text-white text-sm px-3 py-1.5 rounded"
+            className="btn-danger"
           >
             {cancelling ? 'Cancelling…' : 'Cancel run'}
           </button>
-          <Link to="/" className="text-sm text-slate-400 hover:text-slate-200">← Dashboard</Link>
+          <Link to="/" className="btn-ghost text-sm">
+            ← Dashboard
+          </Link>
         </div>
       </header>
 
       {summaryError && (
-        <div className="rounded border border-rose-700 bg-rose-950/40 text-rose-200 text-sm p-3">{summaryError}</div>
+        <div className="rounded-lg border border-rose-700/50 bg-rose-950/30 text-rose-300 text-sm p-4">{summaryError}</div>
       )}
       {cancelError && (
-        <div className="rounded border border-rose-700 bg-rose-950/40 text-rose-200 text-sm p-3">{cancelError}</div>
+        <div className="rounded-lg border border-rose-700/50 bg-rose-950/30 text-rose-300 text-sm p-4">{cancelError}</div>
       )}
 
       {/* Meta row */}
       {summaryLoading ? (
         <Spinner label="Loading run metadata…" />
       ) : (
-        <div className="text-xs text-slate-500 font-mono">
-          socket: {stream.socketState}
-          {summary?.args && summary.args.length > 0 && <> &nbsp;·&nbsp; args: {summary.args.join(' ')}</>}
+        <div className="text-xs text-slate-500 font-mono flex items-center gap-2 flex-wrap">
+          <span className="text-slate-600">socket:</span>
+          <span className={stream.socketState === 'open' ? 'text-emerald-400' : 'text-slate-500'}>
+            {stream.socketState}
+          </span>
+          {summary?.args && summary.args.length > 0 && (
+            <>
+              <span className="text-slate-700">·</span>
+              <span className="text-slate-600">args:</span>
+              <span className="text-slate-400">{summary.args.join(' ')}</span>
+            </>
+          )}
         </div>
       )}
 
       {/* View toggle */}
-      <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg p-1 w-fit">
+      <div className="flex items-center gap-1 bg-surface-2 border border-white/[0.06] rounded-xl p-1 w-fit">
         {(['manager', 'developer'] as ViewMode[]).map((mode) => (
           <button
             key={mode}
             onClick={() => setViewMode(mode)}
-            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`px-5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
               viewMode === mode
-                ? 'bg-slate-700 text-slate-100'
+                ? 'bg-gradient-brand text-white shadow-glow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            {mode === 'manager' ? '📋 Manager view' : '💻 Developer view'}
+            {mode === 'manager' ? '📋 Manager' : '💻 Developer'}
           </button>
         ))}
       </div>
 
       {/* Content panel */}
-      <div className="rounded-lg border border-slate-800 bg-slate-900/20 p-4 min-h-48">
+      <div className="card p-5 min-h-48">
         {viewMode === 'manager' ? (
           <ManagerTimeline stepEvents={stream.stepEvents} runStatus={status} />
         ) : (
@@ -117,18 +130,18 @@ export function RunDetails() {
 
 function StatusBadge({ status, exitCode }: { status: RunStatus | null; exitCode: number | null }) {
   const styles: Record<RunStatus | 'unknown', string> = {
-    running: 'bg-sky-900/60 text-sky-300 border-sky-700',
-    completed: 'bg-emerald-900/60 text-emerald-300 border-emerald-700',
-    failed: 'bg-rose-900/60 text-rose-300 border-rose-700',
-    error: 'bg-amber-900/60 text-amber-300 border-amber-700',
-    unknown: 'bg-slate-800 text-slate-400 border-slate-700',
+    running: 'bg-brand-500/20 text-brand-300 border-brand-500/40',
+    completed: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    failed: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+    error: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    unknown: 'bg-surface-4 text-slate-400 border-white/[0.08]',
   };
   const key = status ?? 'unknown';
   return (
-    <span className={`text-xs uppercase tracking-wide border px-2 py-1 rounded ${styles[key]}`}>
+    <span className={`text-xs font-semibold uppercase tracking-wide border px-3 py-1.5 rounded-full ${styles[key]}`}>
       {status ?? 'unknown'}
       {exitCode !== null && status && status !== 'running' && (
-        <span className="ml-1 opacity-75">exit {exitCode}</span>
+        <span className="ml-1.5 opacity-70 font-normal">exit {exitCode}</span>
       )}
     </span>
   );

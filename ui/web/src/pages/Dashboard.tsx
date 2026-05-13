@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchTests, fetchConfig, startRun, type DiscoveredTest } from '../api/client';
 import { Spinner } from '../components/Spinner';
+import { TagChip } from '../components/TagChip';
 
 const PROJECT_ICON: Record<string, string> = {
   chromium: '🟡',
@@ -11,14 +12,14 @@ const PROJECT_ICON: Record<string, string> = {
   api: '🔌',
 };
 
-const TAG_COLORS: Record<string, string> = {
-  smoke: 'bg-emerald-900/50 text-emerald-300 border-emerald-700',
-  regression: 'bg-sky-900/50 text-sky-300 border-sky-700',
-  'ai-generated': 'bg-purple-900/50 text-purple-300 border-purple-700',
-};
-
-function tagChipClass(tag: string): string {
-  return TAG_COLORS[tag] ?? 'bg-slate-800 text-slate-400 border-slate-700';
+function groupByTitle(tests: DiscoveredTest[]): Map<string, DiscoveredTest[]> {
+  const map = new Map<string, DiscoveredTest[]>();
+  for (const t of tests) {
+    const existing = map.get(t.title) ?? [];
+    existing.push(t);
+    map.set(t.title, existing);
+  }
+  return map;
 }
 
 export function Dashboard() {
@@ -29,62 +30,59 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [baseUrl, setBaseUrl] = useState<string | null>(null);
-  const [project, setProject] = useState<string>('');
-  const [grep, setGrep] = useState<string>('');
+  const [project, setProject] = useState('');
+  const [grep, setGrep] = useState('');
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
-  function loadTests(cancelled: { value: boolean }) {
+  function loadTests(cancelled: { v: boolean }) {
     setLoading(true);
     setLoadError(null);
     fetchTests()
       .then((res) => {
-        if (cancelled.value) return;
+        if (cancelled.v) return;
         setTests(res.tests);
         setErrors(res.errors.map((e) => e.message));
       })
-      .catch((err: Error) => {
-        if (!cancelled.value) setLoadError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled.value) setLoading(false);
-      });
+      .catch((err: Error) => { if (!cancelled.v) setLoadError(err.message); })
+      .finally(() => { if (!cancelled.v) setLoading(false); });
   }
 
-  // Auto-refresh when navigated here with ?refresh=1 (from New Test page).
   useEffect(() => {
-    const cancelled = { value: false };
-    loadTests(cancelled);
+    const c = { v: false };
+    loadTests(c);
     fetchConfig()
-      .then((cfg) => {
-        if (!cancelled.value) setBaseUrl(cfg.vars['BASE_URL'] ?? null);
-      })
-      .catch(() => {/* non-critical */});
-
-    if (searchParams.get('refresh')) {
-      setSearchParams({}, { replace: true });
-    }
-    return () => { cancelled.value = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+      .then((cfg) => { if (!c.v) setBaseUrl(cfg.vars['BASE_URL'] ?? null); })
+      .catch(() => {});
+    if (searchParams.get('refresh')) setSearchParams({}, { replace: true });
+    return () => { c.v = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.get('refresh')]);
 
-  const projects = useMemo(
-    () => Array.from(new Set(tests.map((t) => t.projectName))).sort(),
-    [tests]
-  );
-  const tags = useMemo(
-    () => Array.from(new Set(tests.flatMap((t) => t.tags))).sort(),
-    [tests]
-  );
+  const projects = useMemo(() => Array.from(new Set(tests.map((t) => t.projectName))).sort(), [tests]);
+  const tags = useMemo(() => Array.from(new Set(tests.flatMap((t) => t.tags))).sort(), [tests]);
+
+  // Group by title for card view (collapse multi-project duplicates)
+  const grouped = useMemo(() => groupByTitle(tests), [tests]);
+  const cards = useMemo(() => {
+    const entries = Array.from(grouped.entries());
+    return entries.filter(([, ts]) => {
+      if (project && !ts.some((t) => t.projectName === project)) return false;
+      if (grep) {
+        const q = grep.replace(/^@/, '').toLowerCase();
+        const matchTitle = ts[0]?.title.toLowerCase().includes(q);
+        const matchTag = ts.some((t) => t.tags.some((tg) => tg.toLowerCase().includes(q)));
+        if (!matchTitle && !matchTag) return false;
+      }
+      return true;
+    });
+  }, [grouped, project, grep]);
 
   async function handleRun() {
     setStarting(true);
     setStartError(null);
     try {
-      const { runId } = await startRun({
-        project: project || undefined,
-        grep: grep || undefined,
-      });
+      const { runId } = await startRun({ project: project || undefined, grep: grep || undefined });
       navigate(`/runs/${runId}`);
     } catch (err) {
       setStartError(err instanceof Error ? err.message : String(err));
@@ -94,178 +92,155 @@ export function Dashboard() {
   }
 
   return (
-    <section className="space-y-6">
-      {/* Environment banner */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <header className="space-y-0.5">
-          <h2 className="text-xl font-semibold">Dashboard</h2>
+    <section className="space-y-8 animate-slide-up">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="space-y-1">
+          <h2 className="text-2xl font-bold text-white">Test Suite</h2>
           {loading ? (
             <Spinner label="Discovering tests…" />
           ) : (
-            <p className="text-sm text-slate-400">{tests.length} test(s) discovered</p>
+            <p className="text-sm text-slate-400">
+              {cards.length} test{cards.length !== 1 ? 's' : ''} shown
+              {tests.length !== cards.length && <span className="text-slate-500"> of {tests.length} total</span>}
+            </p>
           )}
-        </header>
+        </div>
 
         {baseUrl && (
-          <div className="flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/60 px-4 py-1.5 text-xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-            <span className="text-slate-400">Testing against</span>
-            <a
-              href={baseUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sky-400 hover:text-sky-300 font-mono font-medium truncate max-w-xs"
-            >
+          <a href={baseUrl} target="_blank" rel="noreferrer"
+            className="flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/10 px-4 py-1.5 text-xs hover:bg-brand-500/20 transition-colors group">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span className="text-slate-400">Environment:</span>
+            <span className="text-brand-300 font-mono font-medium group-hover:text-brand-200 truncate max-w-xs">
               {baseUrl}
-            </a>
-          </div>
+            </span>
+          </a>
         )}
       </div>
 
+      {/* Banners */}
       {loadError && (
-        <div className="rounded border border-rose-700 bg-rose-950/40 text-rose-200 text-sm p-3">
+        <div className="rounded-lg border border-rose-700/50 bg-rose-950/30 text-rose-300 text-sm p-4">
           Failed to load tests: {loadError}
         </div>
       )}
       {errors.length > 0 && (
-        <div className="rounded border border-amber-700 bg-amber-950/30 text-amber-200 text-sm p-3 space-y-1">
-          <div className="font-semibold">⚠ Discovery warnings</div>
-          {errors.map((e, i) => (
-            <div key={i} className="font-mono text-xs whitespace-pre-wrap">
-              {e}
-            </div>
-          ))}
+        <div className="rounded-lg border border-amber-700/50 bg-amber-950/20 text-amber-200 text-sm p-4 space-y-2">
+          <div className="font-semibold text-amber-300">⚠ Discovery warnings</div>
+          {errors.map((e, i) => <div key={i} className="font-mono text-xs text-amber-400/80 whitespace-pre-wrap">{e}</div>)}
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-slate-400">Project</span>
-          <select
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-            className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm"
-          >
+      {/* Controls bar */}
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="flex flex-col gap-1.5 min-w-36">
+          <label className="text-xs font-medium text-slate-400">Project</label>
+          <select value={project} onChange={(e) => setProject(e.target.value)}
+            className="input text-sm h-9">
             <option value="">All projects</option>
             {projects.map((p) => (
-              <option key={p} value={p}>
-                {PROJECT_ICON[p] ?? '▸'} {p}
-              </option>
+              <option key={p} value={p}>{PROJECT_ICON[p] ?? '▸'} {p}</option>
             ))}
           </select>
-        </label>
-
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-slate-400">Grep / tag</span>
-          <input
-            value={grep}
-            onChange={(e) => setGrep(e.target.value)}
-            placeholder="@smoke"
-            list="tag-suggestions"
-            className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm"
-          />
-          <datalist id="tag-suggestions">
-            {tags.map((t) => (
-              <option key={t} value={`@${t}`} />
-            ))}
-          </datalist>
-        </label>
-
-        <div className="flex items-end">
-          <button
-            onClick={handleRun}
-            disabled={starting || loading}
-            className="w-full bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-medium px-4 py-2 rounded text-sm flex items-center justify-center gap-2"
-          >
-            {starting ? (
-              <>
-                <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                Starting…
-              </>
-            ) : (
-              <>▶ Run tests</>
-            )}
-          </button>
         </div>
+
+        <div className="flex flex-col gap-1.5 flex-1 min-w-40">
+          <label className="text-xs font-medium text-slate-400">Filter by tag or name</label>
+          <input value={grep} onChange={(e) => setGrep(e.target.value)}
+            placeholder="@smoke, login, api…"
+            list="tag-suggestions"
+            className="input text-sm h-9" />
+          <datalist id="tag-suggestions">
+            {tags.map((t) => <option key={t} value={`@${t}`} />)}
+          </datalist>
+        </div>
+
+        <button onClick={handleRun} disabled={starting || loading} className="btn-primary h-9">
+          {starting ? (
+            <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />Starting…</>
+          ) : '▶ Run tests'}
+        </button>
       </div>
 
       {startError && (
-        <div className="rounded border border-rose-700 bg-rose-950/40 text-rose-200 text-sm p-3">
+        <div className="rounded-lg border border-rose-700/50 bg-rose-950/30 text-rose-300 text-sm p-3">
           {startError}
         </div>
       )}
 
-      <div className="rounded-lg border border-slate-800 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-900/60 text-slate-400 text-xs uppercase tracking-wide">
-            <tr>
-              <th className="text-left px-3 py-2.5 font-medium">Test</th>
-              <th className="text-left px-3 py-2.5 font-medium">Project</th>
-              <th className="text-left px-3 py-2.5 font-medium">Tags</th>
-              <th className="text-left px-3 py-2.5 font-medium">File</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/60">
-            {loading &&
-              Array.from({ length: 4 }).map((_, i) => (
-                <tr key={`skeleton-${i}`} className="animate-pulse">
-                  <td className="px-3 py-2.5"><div className="h-3 bg-slate-800 rounded w-2/3" /></td>
-                  <td className="px-3 py-2.5"><div className="h-3 bg-slate-800 rounded w-16" /></td>
-                  <td className="px-3 py-2.5"><div className="h-3 bg-slate-800 rounded w-12" /></td>
-                  <td className="px-3 py-2.5"><div className="h-3 bg-slate-800 rounded w-1/2" /></td>
-                </tr>
-              ))}
-            {!loading &&
-              tests.map((t, i) => (
-                <tr
-                  key={`${t.file}:${t.line}:${t.projectName}:${i}`}
-                  className="hover:bg-slate-900/40 transition-colors"
-                >
-                  <td className="px-3 py-2.5">
-                    <span className="flex items-center gap-2">
-                      <span className="text-slate-500 shrink-0">
-                        {t.tags.includes('ai-generated') ? '✦' : '◦'}
-                      </span>
-                      <span>{t.title}</span>
+      {/* Test cards grid */}
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="card p-4 space-y-3 animate-pulse">
+              <div className="h-4 bg-surface-5 rounded w-3/4" />
+              <div className="h-3 bg-surface-5 rounded w-1/2" />
+              <div className="flex gap-2">
+                <div className="h-5 w-16 bg-surface-5 rounded" />
+                <div className="h-5 w-12 bg-surface-5 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : cards.length === 0 ? (
+        <div className="card flex flex-col items-center justify-center py-20 space-y-3">
+          <div className="text-5xl">🔍</div>
+          <div className="text-lg font-semibold text-slate-200">No tests found</div>
+          <div className="text-sm text-slate-500 text-center max-w-xs">
+            {tests.length === 0
+              ? 'No tests discovered yet. Use the AI Builder to generate your first test, or check your .env file.'
+              : 'No tests match your current filters. Try clearing the project or tag filter.'}
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {cards.map(([title, testGroup]) => {
+            const first = testGroup[0]!;
+            const uniqueTags = Array.from(new Set(testGroup.flatMap((t) => t.tags)));
+            const uniqueProjects = Array.from(new Set(testGroup.map((t) => t.projectName)));
+            const isAI = uniqueTags.includes('ai-generated');
+            const filePath = first.file.split('/').slice(-2).join('/');
+
+            return (
+              <div key={title} className="card-hover p-5 space-y-4 cursor-default group">
+                {/* Card header */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <span className="mt-0.5 shrink-0 text-base">
+                      {isAI ? '✦' : '◦'}
                     </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">
-                    {PROJECT_ICON[t.projectName] ?? '▸'} {t.projectName}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <span className="flex flex-wrap gap-1">
-                      {t.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className={`text-xs border px-1.5 py-0.5 rounded ${tagChipClass(tag)}`}
-                        >
-                          @{tag}
-                        </span>
-                      ))}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-slate-500 font-mono text-xs whitespace-nowrap">
-                    {t.file.split('/').slice(-2).join('/')}:{t.line}
-                  </td>
-                </tr>
-              ))}
-            {!loading && tests.length === 0 && !loadError && (
-              <tr>
-                <td colSpan={4} className="px-3 py-12 text-center text-slate-500">
-                  <div className="space-y-2">
-                    <div className="text-3xl">🔍</div>
-                    <div className="text-slate-300 font-medium">No tests discovered</div>
-                    <div className="text-xs max-w-sm mx-auto">
-                      Check the discovery warnings above or verify your Playwright config
-                      and <code>.env</code> file at the framework root.
-                    </div>
+                    <h3 className="text-sm font-semibold text-white leading-snug line-clamp-2">
+                      {title}
+                    </h3>
                   </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                </div>
+
+                {/* Tags */}
+                {uniqueTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {uniqueTags.map((t) => <TagChip key={t} tag={t} />)}
+                  </div>
+                )}
+
+                {/* Footer */}
+                <div className="flex items-center justify-between pt-1 border-t border-white/[0.05]">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {uniqueProjects.map((p) => (
+                      <span key={p} className="text-xs text-slate-500">
+                        {PROJECT_ICON[p] ?? '▸'} {p}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="text-[11px] text-slate-600 font-mono truncate max-w-[120px]" title={filePath}>
+                    {filePath}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
