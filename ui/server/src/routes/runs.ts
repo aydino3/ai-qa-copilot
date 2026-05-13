@@ -8,7 +8,7 @@ runsRouter.get('/', (_req: Request, res: Response) => {
   res.json({ runs: runRegistry.list() });
 });
 
-runsRouter.post('/', (req: Request, res: Response) => {
+runsRouter.post('/', async (req: Request, res: Response) => {
   if (runRegistry.hasActive()) {
     const active = runRegistry.getActive();
     res.status(409).json({
@@ -26,11 +26,12 @@ runsRouter.post('/', (req: Request, res: Response) => {
   };
 
   try {
-    const started = startRun(options);
+    const started = await startRun(options);
     res.status(201).json({
       runId: started.id,
       pid: started.pid,
       args: started.args,
+      baselineRun: started.baselineRun,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

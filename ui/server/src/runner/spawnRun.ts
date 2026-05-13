@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { FRAMEWORK_ROOT, RESULTS_JSON_PATH } from '../config.js';
 import { runRegistry, type StepPayload } from './runRegistry.js';
 
@@ -14,15 +15,25 @@ export interface StartedRun {
   id: string;
   args: string[];
   pid: number | undefined;
+  baselineRun: boolean;
 }
 
 const STEP_PREFIX = '__UI_STEP__:';
 const activeChildren = new Map<string, ChildProcess>();
 
-export function startRun(options: RunOptions): StartedRun {
-  const args = buildPlaywrightArgs(options);
+export async function startRun(options: RunOptions): Promise<StartedRun> {
+  const baselineRun = options.file ? await needsBaseline(options.file) : false;
+  const args = buildPlaywrightArgs(options, baselineRun);
   const id = randomUUID();
   runRegistry.create(id, args);
+
+  if (baselineRun) {
+    runRegistry.appendLog(id, {
+      stream: 'stdout',
+      data: '[smart-baseline] No snapshots found — running with --update-snapshots to create baseline.\n',
+      ts: Date.now(),
+    });
+  }
 
   const child = spawn('npx', ['playwright', 'test', ...args], {
     cwd: FRAMEWORK_ROOT,
@@ -31,14 +42,11 @@ export function startRun(options: RunOptions): StartedRun {
   });
   activeChildren.set(id, child);
 
-  // Maintain a partial-line buffer so step markers that arrive mid-chunk are
-  // still detected reliably without splitting them across two log events.
   let stdoutBuffer = '';
 
   child.stdout.on('data', (chunk: Buffer) => {
     stdoutBuffer += chunk.toString('utf8');
     const lines = stdoutBuffer.split('\n');
-    // The last element is either empty (complete final \n) or an incomplete line.
     stdoutBuffer = lines.pop() ?? '';
 
     let normalOutput = '';
@@ -48,7 +56,6 @@ export function startRun(options: RunOptions): StartedRun {
           const payload = JSON.parse(line.slice(STEP_PREFIX.length)) as StepPayload;
           runRegistry.appendStep(id, payload);
         } catch {
-          // Malformed marker — treat as a normal log line.
           normalOutput += line + '\n';
         }
       } else {
@@ -70,7 +77,6 @@ export function startRun(options: RunOptions): StartedRun {
 
   child.on('error', (err) => {
     activeChildren.delete(id);
-    // Flush any remaining buffered stdout as a log chunk.
     if (stdoutBuffer) {
       runRegistry.appendLog(id, { stream: 'stdout', data: stdoutBuffer, ts: Date.now() });
       stdoutBuffer = '';
@@ -84,15 +90,21 @@ export function startRun(options: RunOptions): StartedRun {
       runRegistry.appendLog(id, { stream: 'stdout', data: stdoutBuffer, ts: Date.now() });
       stdoutBuffer = '';
     }
+    if (baselineRun) {
+      runRegistry.appendLog(id, {
+        stream: 'stdout',
+        data: '[smart-baseline] Baseline snapshots created successfully.\n',
+        ts: Date.now(),
+      });
+    }
     const results = await readResultsJson();
-    runRegistry.finalize(id, {
-      status: code === 0 ? 'completed' : 'failed',
-      exitCode: code,
-      results,
-    });
+    // On a baseline run Playwright exits non-zero ("1 snapshot written") but
+    // that is expected — treat it as success so the dashboard shows green.
+    const status = code === 0 || baselineRun ? 'completed' : 'failed';
+    runRegistry.finalize(id, { status, exitCode: code, results });
   });
 
-  return { id, args, pid: child.pid };
+  return { id, args, pid: child.pid, baselineRun };
 }
 
 export function cancelRun(id: string): boolean {
@@ -102,11 +114,28 @@ export function cancelRun(id: string): boolean {
   return true;
 }
 
-function buildPlaywrightArgs(opts: RunOptions): string[] {
+/**
+ * Returns true when no snapshot directory exists for the given test file,
+ * meaning this is the first run and we need to create the baseline.
+ * Playwright stores snapshots at: <testFileDir>/<testFileName>-snapshots/
+ */
+async function needsBaseline(file: string): Promise<boolean> {
+  const resolved = path.isAbsolute(file) ? file : path.join(FRAMEWORK_ROOT, file);
+  const snapshotDir = path.join(path.dirname(resolved), `${path.basename(resolved)}-snapshots`);
+  try {
+    await fs.access(snapshotDir);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function buildPlaywrightArgs(opts: RunOptions, updateSnapshots: boolean): string[] {
   const args: string[] = [];
   if (opts.grep) args.push('--grep', opts.grep);
   if (opts.project) args.push('--project', opts.project);
   if (opts.file) args.push(opts.file);
+  if (updateSnapshots) args.push('--update-snapshots');
   return args;
 }
 
