@@ -10,6 +10,7 @@ const PRIMARY_KEYS = [
   'TEST_ADMIN_EMAIL',
   'TEST_ADMIN_PASSWORD',
   'AI_ENABLED',
+  'GEMINI_API_KEY',
   'API_KEY',
 ];
 
@@ -20,11 +21,12 @@ const KEY_DESCRIPTIONS: Record<string, string> = {
   TEST_USER_PASSWORD: '',
   TEST_ADMIN_EMAIL: 'Admin-user credentials',
   TEST_ADMIN_PASSWORD: '',
-  AI_ENABLED: 'Set to true to enable Claude-powered failure analysis',
+  AI_ENABLED: 'Set to true to enable Gemini-powered test generation',
+  GEMINI_API_KEY: 'Google AI Studio API key (free tier — aistudio.google.com)',
   API_KEY: 'Optional bearer token for ApiClient',
 };
 
-const PASSWORD_KEYS = new Set(['TEST_USER_PASSWORD', 'TEST_ADMIN_PASSWORD']);
+const PASSWORD_KEYS = new Set(['TEST_USER_PASSWORD', 'TEST_ADMIN_PASSWORD', 'GEMINI_API_KEY']);
 
 export function Settings() {
   const [vars, setVars] = useState<Record<string, string>>({});

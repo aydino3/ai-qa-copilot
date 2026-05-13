@@ -7,7 +7,7 @@ export const generateTestRouter: Router = Router();
 
 const AI_GENERATED_DIR = path.join(FRAMEWORK_ROOT, 'tests', 'ai-generated');
 const AI_ENABLED = process.env.AI_ENABLED === 'true';
-const API_KEY = process.env.ANTHROPIC_API_KEY;
+const API_KEY = process.env.GEMINI_API_KEY;
 
 const BASE_SYSTEM_PROMPT = `You are an expert Playwright test engineer. Given a target URL/feature, natural language test steps, and optional tags, generate a single, complete, production-ready Playwright TypeScript test file.
 
@@ -18,7 +18,12 @@ Rules (ALL are mandatory — violation will break the Manager View):
 - Use Playwright-native locators exclusively: getByRole, getByLabel, getByPlaceholder, getByText, getByTestId
 - Never use page.waitForTimeout() — use expect(locator).toBeVisible() or waitFor() instead
 - Always await expect(page).toHaveURL(...) after navigation — inside its own test.step
-- Output ONLY the TypeScript file contents — no markdown fences, no preamble, no explanation`;
+
+CRITICAL OUTPUT FORMAT:
+- Output ONLY the raw TypeScript file contents.
+- DO NOT wrap the code in markdown fences (no \`\`\`typescript, no \`\`\`ts, no \`\`\`).
+- DO NOT include any preamble, explanation, or trailing commentary.
+- The first character of your response MUST be the first character of the TypeScript code (typically "import").`;
 
 const VISUAL_REGRESSION_ADDENDUM = `
 
@@ -35,7 +40,6 @@ interface GenerateBody {
   visualRegression?: boolean;
 }
 
-/** Parses a tags string like "@smoke, @regression" into ['@smoke', '@regression'] */
 function parseTags(raw: string): string[] {
   return raw
     .split(/[\s,]+/)
@@ -44,14 +48,23 @@ function parseTags(raw: string): string[] {
     .map((t) => (t.startsWith('@') ? t : `@${t}`));
 }
 
-/** Derives a kebab-case filename slug from the feature/URL string */
 function toSlug(input: string): string {
   return input
-    .replace(/https?:\/\/[^/]+/i, '') // strip origin from URLs
+    .replace(/https?:\/\/[^/]+/i, '')
     .replace(/[^a-z0-9]+/gi, '-')
     .replace(/^-+|-+$/g, '')
     .toLowerCase()
     .slice(0, 48) || 'feature';
+}
+
+/** Strip any markdown code fences a model might emit despite instructions. */
+function stripMarkdownFences(text: string): string {
+  let out = text.trim();
+  // Leading fence: ```typescript / ```ts / ```
+  out = out.replace(/^```(?:typescript|ts|javascript|js)?\s*\n/i, '');
+  // Trailing fence
+  out = out.replace(/\n?```\s*$/i, '');
+  return out.trim() + '\n';
 }
 
 generateTestRouter.post('/', async (req: Request, res: Response) => {
@@ -97,10 +110,10 @@ async function generateWithAI(
   userTags: string[],
   visualRegression: boolean,
 ): Promise<string> {
-  const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  const client = new Anthropic({ apiKey: API_KEY });
+  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const client = new GoogleGenerativeAI(API_KEY as string);
 
-  const systemPrompt = visualRegression
+  const systemInstruction = visualRegression
     ? BASE_SYSTEM_PROMPT + VISUAL_REGRESSION_ADDENDUM
     : BASE_SYSTEM_PROMPT;
 
@@ -111,18 +124,18 @@ Tags: ${allTags.join(', ')}
 Natural language steps:
 ${steps}
 
-${visualRegression ? 'Visual regression: ENABLED — include toHaveScreenshot() assertions.\n\n' : ''}Generate the complete Playwright TypeScript test file now.`;
+${visualRegression ? 'Visual regression: ENABLED — include toHaveScreenshot() assertions.\n\n' : ''}Generate the complete Playwright TypeScript test file now. Output raw TypeScript only — no markdown fences.`;
 
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userPrompt }],
+  const model = client.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction,
+    generationConfig: { maxOutputTokens: 4096, temperature: 0.2 },
   });
 
-  const block = message.content.find((b) => b.type === 'text');
-  if (!block || block.type !== 'text') throw new Error('No text block in AI response');
-  return block.text.replace(/^```(?:typescript|ts)?\n?/m, '').replace(/\n?```$/m, '').trim() + '\n';
+  const result = await model.generateContent(userPrompt);
+  const text = result.response.text();
+  if (!text) throw new Error('Empty response from Gemini');
+  return stripMarkdownFences(text);
 }
 
 function generateMock(
@@ -131,7 +144,6 @@ function generateMock(
   userTags: string[],
   visualRegression: boolean,
 ): string {
-  // Derive a human title from the URL/feature string.
   const isUrl = /^https?:\/\//i.test(targetUrl);
   const humanTitle = isUrl
     ? targetUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '')
@@ -160,7 +172,7 @@ function generateMock(
     : `  await test.step('Open ${humanTitle}', async () => {\n    await page.goto(process.env.BASE_URL ?? '/');\n  });`;
 
   return `// Generated: ${new Date().toISOString()}
-// To use Claude instead of this template, set AI_ENABLED=true and ANTHROPIC_API_KEY in your .env
+// To use Gemini instead of this template, set AI_ENABLED=true and GEMINI_API_KEY in your .env
 import { test, expect } from '@playwright/test';
 
 test(

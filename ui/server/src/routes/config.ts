@@ -8,7 +8,7 @@ export const configRouter: Router = Router();
 const ENV_PATH = path.join(FRAMEWORK_ROOT, '.env');
 
 // Keys that will never be returned or updated through this API.
-const REDACTED_KEYS = new Set(['ANTHROPIC_API_KEY']);
+const REDACTED_KEYS = new Set(['GEMINI_API_KEY']);
 
 interface EnvLine {
   type: 'comment' | 'blank' | 'pair';

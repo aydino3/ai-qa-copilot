@@ -68,7 +68,7 @@ export function NewTest() {
           AI Test Builder
         </h2>
         <p className="text-sm text-slate-400">
-          Describe your test in plain English. Claude generates a production-ready Playwright TypeScript file.
+          Describe your test in plain English. Gemini generates a production-ready Playwright TypeScript file.
         </p>
       </header>
 
@@ -166,7 +166,7 @@ export function NewTest() {
             )}
           </button>
           <span className="text-xs text-slate-600">
-            {generating ? 'Calling Claude…' : 'AI_ENABLED controls Claude vs template'}
+            {generating ? 'Calling Gemini…' : 'AI_ENABLED controls Gemini vs template'}
           </span>
         </div>
       </form>
@@ -186,7 +186,7 @@ export function NewTest() {
                 {preview.filename}
               </code>
               <span className="tag-default">
-                {preview.aiEnabled ? '🤖 Claude' : '📄 template'}
+                {preview.aiEnabled ? '✨ Gemini' : '📄 template'}
               </span>
               {preview.visualRegression && <span className="tag-visual">📸 visual</span>}
             </div>
