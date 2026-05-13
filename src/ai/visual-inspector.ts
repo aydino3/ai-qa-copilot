@@ -1,4 +1,6 @@
 import * as fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import * as path from 'node:path';
 
 export interface VisualInspectionResult {
   passed: boolean;
@@ -51,16 +53,32 @@ export async function inspectLayoutWithAI(
   // Load the Gemini SDK at runtime. Wrapped in try/catch so a missing
   // dependency surfaces an actionable message instead of an opaque
   // module-resolution stack trace from Playwright's loader.
+  // Resolve the Gemini SDK with a multi-strategy fallback so Playwright
+  // workers can find it regardless of their CWD or module search path:
+  //   1. Standard ESM dynamic import (works when NODE_PATH is set or the
+  //      worker's resolution naturally finds the package).
+  //   2. createRequire rooted at the framework root — guarantees resolution
+  //      from <project-root>/node_modules even if the worker's CWD differs.
   let GoogleGenerativeAI: typeof import('@google/generative-ai').GoogleGenerativeAI;
   try {
     ({ GoogleGenerativeAI } = await import('@google/generative-ai'));
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `Failed to load @google/generative-ai. Install it in the project root with ` +
-        `\`npm install @google/generative-ai\` and ensure Playwright can resolve ` +
-        `the root node_modules. Original error: ${detail}`,
-    );
+  } catch (primaryErr) {
+    try {
+      // __dirname at runtime: <project-root>/src/ai → go up two levels.
+      const projectRoot = path.resolve(__dirname, '..', '..');
+      const rootRequire = createRequire(path.join(projectRoot, 'package.json'));
+      const mod = rootRequire('@google/generative-ai') as typeof import('@google/generative-ai');
+      GoogleGenerativeAI = mod.GoogleGenerativeAI;
+    } catch (fallbackErr) {
+      const primary = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+      const fallback = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+      throw new Error(
+        `Failed to load @google/generative-ai. Install it in the project root with ` +
+          `\`npm install @google/generative-ai\` and ensure Playwright can resolve ` +
+          `the root node_modules. Dynamic import error: ${primary}. ` +
+          `Root createRequire error: ${fallback}.`,
+      );
+    }
   }
   const client = new GoogleGenerativeAI(apiKey);
   const model = client.getGenerativeModel({

@@ -1,7 +1,21 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as dotenv from 'dotenv';
+import * as path from 'node:path';
+import { Module } from 'node:module';
 
 dotenv.config();
+
+// Force Node (and all Playwright worker subprocesses) to resolve modules from
+// the project-root node_modules. This fixes "Cannot find package
+// '@google/generative-ai'" when a test file under src/ai/ is loaded by a
+// worker whose CWD or module search path doesn't include the framework root.
+const ROOT_NODE_MODULES = path.join(__dirname, 'node_modules');
+process.env.NODE_PATH = process.env.NODE_PATH
+  ? `${ROOT_NODE_MODULES}${path.delimiter}${process.env.NODE_PATH}`
+  : ROOT_NODE_MODULES;
+// Re-initialize the module search paths in the current process so the new
+// NODE_PATH takes effect immediately (Node only reads NODE_PATH at startup).
+(Module as unknown as { _initPaths: () => void })._initPaths();
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 const IS_CI = !!process.env.CI;
