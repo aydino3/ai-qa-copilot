@@ -140,17 +140,26 @@ export function cancelRun(id: string): boolean {
 }
 
 /**
- * Returns true when no snapshot directory exists for the given test file,
+ * Returns true when no snapshot PNG files exist for the given test file,
  * meaning this is the first run and we need to create the baseline.
  * Playwright stores snapshots at: <testFileDir>/<testFileName>-snapshots/
+ * An empty directory is treated the same as a missing directory.
  */
 async function needsBaseline(file: string): Promise<boolean> {
   const resolved = path.isAbsolute(file) ? file : path.join(FRAMEWORK_ROOT, file);
   const snapshotDir = path.join(path.dirname(resolved), `${path.basename(resolved)}-snapshots`);
   try {
-    await fs.access(snapshotDir);
-    return false;
+    const entries = await fs.readdir(snapshotDir, { recursive: true });
+    const hasSnapshots = entries.some((e) => /\.(png|jpg|jpeg)$/i.test(String(e)));
+    const result = !hasSnapshots;
+    console.log(
+      `[DEBUG] Baseline check for "${path.basename(file)}": dir="${snapshotDir}" entries=${entries.length} hasSnapshots=${hasSnapshots} needsBaseline=${result}`,
+    );
+    return result;
   } catch {
+    console.log(
+      `[DEBUG] Baseline check for "${path.basename(file)}": dir not found → needsBaseline=true`,
+    );
     return true;
   }
 }

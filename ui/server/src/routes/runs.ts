@@ -1,3 +1,5 @@
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { Router, type Request, type Response } from 'express';
 import { runRegistry, type RunRecord } from '../runner/runRegistry.js';
 import { startRun, cancelRun, type RunOptions } from '../runner/spawnRun.js';
@@ -69,6 +71,38 @@ runsRouter.get('/:id/evidence', (req: Request, res: Response) => {
     return;
   }
   res.json(buildEvidence(record));
+});
+
+// ─── Asset-serving endpoint ───────────────────────────────────────────────────
+// Serves test-result files (screenshots, videos, traces, snapshots) through the
+// /api/ prefix so the Vite dev-server proxy routes them correctly.
+
+runsRouter.get('/:id/asset', async (req: Request, res: Response) => {
+  const record = runRegistry.get(String(req.params.id));
+  if (!record) {
+    res.status(404).json({ error: 'not_found' });
+    return;
+  }
+  const relPath = String(req.query.p ?? '').replace(/^\/+/, '');
+  if (!relPath) {
+    res.status(400).json({ error: 'missing_path' });
+    return;
+  }
+  const absPath = path.resolve(FRAMEWORK_ROOT, relPath);
+  // Prevent path traversal outside the framework root
+  if (!absPath.startsWith(FRAMEWORK_ROOT + path.sep) && absPath !== FRAMEWORK_ROOT) {
+    res.status(403).json({ error: 'forbidden' });
+    return;
+  }
+  try {
+    await fs.access(absPath);
+  } catch {
+    res.status(404).json({ error: 'file_not_found' });
+    return;
+  }
+  res.sendFile(absPath, (err) => {
+    if (err && !res.headersSent) res.status(404).json({ error: 'file_not_found' });
+  });
 });
 
 // ─── Playwright JSON types (subset we need) ───────────────────────────────────
@@ -150,13 +184,13 @@ export interface RunEvidence {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Convert an absolute filesystem path to a URL served by the static middleware. */
-function toUrl(absPath: string | undefined): string | undefined {
+/** Convert an absolute filesystem path to a URL routed through /api/runs/:id/asset. */
+function toUrl(absPath: string | undefined, runId: string): string | undefined {
   if (!absPath) return undefined;
   const rel = absPath.startsWith(FRAMEWORK_ROOT)
-    ? absPath.slice(FRAMEWORK_ROOT.length)
-    : absPath;
-  return rel.startsWith('/') ? rel : `/${rel}`;
+    ? absPath.slice(FRAMEWORK_ROOT.length).replace(/^\/+/, '')
+    : absPath.replace(/^\/+/, '');
+  return `/api/runs/${encodeURIComponent(runId)}/asset?p=${encodeURIComponent(rel)}`;
 }
 
 function processStep(s: PWStep): EvidenceStep {
@@ -201,7 +235,7 @@ function buildEvidence(record: RunRecord): RunEvidence {
     const named = new Map<string, string>();
 
     for (const att of result.attachments ?? []) {
-      const url = toUrl(att.path);
+      const url = toUrl(att.path, record.id);
       if (!url) continue;
       if (att.name === 'screenshot') {
         screenshots.push(url);
