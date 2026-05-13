@@ -140,3 +140,44 @@ export async function generateTest(opts: GenerateTestOptions): Promise<GenerateT
   });
   return jsonOrThrow<GenerateTestResponse>(res);
 }
+
+// ─── Evidence types ───────────────────────────────────────────────────────────
+
+export interface EvidenceStep {
+  title: string;
+  duration: number;
+  category: string;
+  status: 'passed' | 'failed';
+  error?: string;
+  steps: EvidenceStep[];
+}
+
+export interface TestEvidence {
+  specTitle: string;
+  testTitle: string;
+  projectName: string;
+  status: string;
+  ok: boolean;
+  duration: number;
+  retry: number;
+  steps: EvidenceStep[];
+  screenshots: string[];
+  video?: string;
+  trace?: string;
+  baseline?: string;
+  actual?: string;
+  diff?: string;
+  errors: string[];
+}
+
+export interface RunEvidence {
+  runId: string;
+  baselineRun: boolean;
+  tests: TestEvidence[];
+}
+
+export async function fetchRunEvidence(runId: string): Promise<RunEvidence> {
+  return jsonOrThrow<RunEvidence>(
+    await fetch(`/api/runs/${encodeURIComponent(runId)}/evidence`),
+  );
+}

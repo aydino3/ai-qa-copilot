@@ -5,7 +5,7 @@ interface ModalProps {
   onClose: () => void;
   title: ReactNode;
   children: ReactNode;
-  width?: 'sm' | 'md';
+  width?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 export function Modal({ open, onClose, title, children, width = 'sm' }: ModalProps) {
@@ -18,11 +18,14 @@ export function Modal({ open, onClose, title, children, width = 'sm' }: ModalPro
 
   if (!open) return null;
 
-  const widthClass = width === 'md' ? 'max-w-lg' : 'max-w-sm';
+  const widthClass =
+    width === 'xl' ? 'max-w-6xl' :
+    width === 'lg' ? 'max-w-4xl' :
+    width === 'md' ? 'max-w-lg' : 'max-w-sm';
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 backdrop-blur-sm animate-fade-in overflow-y-auto py-8"
       onClick={onClose}
     >
       <div
