@@ -48,7 +48,20 @@ export async function inspectLayoutWithAI(
   const ext = screenshotPath.split('.').pop()?.toLowerCase() ?? 'png';
   const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
 
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  // Load the Gemini SDK at runtime. Wrapped in try/catch so a missing
+  // dependency surfaces an actionable message instead of an opaque
+  // module-resolution stack trace from Playwright's loader.
+  let GoogleGenerativeAI: typeof import('@google/generative-ai').GoogleGenerativeAI;
+  try {
+    ({ GoogleGenerativeAI } = await import('@google/generative-ai'));
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Failed to load @google/generative-ai. Install it in the project root with ` +
+        `\`npm install @google/generative-ai\` and ensure Playwright can resolve ` +
+        `the root node_modules. Original error: ${detail}`,
+    );
+  }
   const client = new GoogleGenerativeAI(apiKey);
   const model = client.getGenerativeModel({
     model: 'gemini-2.5-flash',
