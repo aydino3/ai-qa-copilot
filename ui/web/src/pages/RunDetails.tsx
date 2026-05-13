@@ -119,7 +119,7 @@ export function RunDetails() {
       {/* Content panel */}
       <div className="card p-5 min-h-48">
         {viewMode === 'manager' ? (
-          <ManagerTimeline stepEvents={stream.stepEvents} runStatus={status} />
+          <ManagerTimeline stepEvents={stream.stepEvents} runStatus={status} exitCode={exitCode} />
         ) : (
           <Terminal logs={stream.logs} />
         )}

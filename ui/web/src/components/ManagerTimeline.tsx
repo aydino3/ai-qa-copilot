@@ -10,7 +10,11 @@ interface TimelineStep {
   endTs?: number;
 }
 
-function buildTimeline(events: StepEvent[]): TimelineStep[] {
+function buildTimeline(
+  events: StepEvent[],
+  runStatus: RunStatus | null,
+  exitCode: number | null,
+): TimelineStep[] {
   const steps: TimelineStep[] = [];
   const pending = new Map<string, number>();
   for (const ev of events) {
@@ -30,6 +34,19 @@ function buildTimeline(events: StepEvent[]): TimelineStep[] {
       }
     }
   }
+
+  // Sweep any unresolved "running" steps once the run has reached a terminal
+  // state. The socket can close before the trailing onStepEnd payloads land,
+  // leaving steps visually stuck mid-spin — infer their outcome from the run
+  // exit code so the timeline matches reality.
+  const isTerminal = runStatus !== null && runStatus !== 'running';
+  if (isTerminal) {
+    const inferred: TimelineStep['state'] = exitCode === 0 ? 'passed' : 'failed';
+    for (const step of steps) {
+      if (step.state === 'running') step.state = inferred;
+    }
+  }
+
   return steps;
 }
 
@@ -42,10 +59,14 @@ function fmtDuration(step: TimelineStep): string {
 interface ManagerTimelineProps {
   stepEvents: StepEvent[];
   runStatus: RunStatus | null;
+  exitCode?: number | null;
 }
 
-export function ManagerTimeline({ stepEvents, runStatus }: ManagerTimelineProps) {
-  const steps = useMemo(() => buildTimeline(stepEvents), [stepEvents]);
+export function ManagerTimeline({ stepEvents, runStatus, exitCode = null }: ManagerTimelineProps) {
+  const steps = useMemo(
+    () => buildTimeline(stepEvents, runStatus, exitCode),
+    [stepEvents, runStatus, exitCode],
+  );
   const isRunning = runStatus === 'running' || runStatus === null;
 
   if (steps.length === 0) {
