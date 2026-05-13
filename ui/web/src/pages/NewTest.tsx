@@ -13,9 +13,15 @@ export function NewTest() {
   const navigate = useNavigate();
   const [targetUrl, setTargetUrl] = useState('');
   const [steps, setSteps] = useState('');
+  const [visualRegression, setVisualRegression] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ filename: string; code: string; aiEnabled: boolean } | null>(null);
+  const [preview, setPreview] = useState<{
+    filename: string;
+    code: string;
+    aiEnabled: boolean;
+    visualRegression?: boolean;
+  } | null>(null);
 
   async function handleGenerate() {
     if (!targetUrl.trim() || !steps.trim()) return;
@@ -23,7 +29,11 @@ export function NewTest() {
     setError(null);
     setPreview(null);
     try {
-      const res = await generateTest(targetUrl.trim(), steps.trim());
+      const res = await generateTest({
+        targetUrl: targetUrl.trim(),
+        steps: steps.trim(),
+        visualRegression,
+      });
       setPreview(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -81,6 +91,26 @@ export function NewTest() {
           />
         </label>
 
+        <label className="flex items-start gap-3 rounded-lg border border-slate-800 bg-slate-900/40 p-3 cursor-pointer hover:border-slate-700 transition-colors">
+          <input
+            type="checkbox"
+            checked={visualRegression}
+            onChange={(e) => setVisualRegression(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-sky-500"
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="text-sm font-medium text-slate-200 flex items-center gap-2">
+              📸 Enable Visual Regression Testing
+              <span className="text-xs text-slate-500 font-normal">(Screenshot diff)</span>
+            </span>
+            <span className="text-xs text-slate-500 leading-relaxed">
+              Adds <code className="text-slate-300">await expect(page).toHaveScreenshot()</code>{' '}
+              assertions and tags the test with <code className="text-purple-300">@visual</code>.
+              First run creates the baseline; subsequent runs diff against it.
+            </span>
+          </span>
+        </label>
+
         <div className="flex items-center gap-3">
           <button
             type="submit"
@@ -119,6 +149,11 @@ export function NewTest() {
               <span className="text-xs border border-slate-700 rounded px-1.5 py-0.5 text-slate-500">
                 {preview.aiEnabled ? '🤖 Claude' : '📄 mock template'}
               </span>
+              {preview.visualRegression && (
+                <span className="text-xs border border-purple-700 bg-purple-900/40 rounded px-1.5 py-0.5 text-purple-300">
+                  📸 visual
+                </span>
+              )}
             </div>
             <button
               onClick={handleGoToDashboard}

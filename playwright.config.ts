@@ -9,9 +9,8 @@ const IS_CI = !!process.env.CI;
 export default defineConfig({
   testDir: './tests',
   // Extend Playwright's default to include our directory-based naming
-  // convention (smoke/regression/visual/api). Setup files are matched by
-  // the setup project's own testMatch and excluded from this pattern.
-  testMatch: '**/*.@(spec|test|smoke|regression|visual|api).?(c|m)[jt]s?(x)',
+  // convention (smoke/regression/visual/api) plus AI-generated tests.
+  testMatch: '**/*.@(spec|test|smoke|regression|visual|api|ai-generated).?(c|m)[jt]s?(x)',
   fullyParallel: true,
   forbidOnly: IS_CI,
   retries: IS_CI ? 2 : 0,
@@ -34,26 +33,17 @@ export default defineConfig({
   },
 
   projects: [
-    // Global auth setup — runs once before browser projects
-    {
-      name: 'setup',
-      testMatch: /.*\.setup\.ts/,
-    },
-
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      dependencies: ['setup'],
     },
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
-      dependencies: ['setup'],
     },
     {
       name: 'mobile-safari',
       use: { ...devices['iPhone 14'] },
-      dependencies: ['setup'],
     },
 
     // API tests run without a browser context

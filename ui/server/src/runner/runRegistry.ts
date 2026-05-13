@@ -43,6 +43,18 @@ class RunRegistry extends EventEmitter {
     return this.runs.get(id) ?? null;
   }
 
+  list(): Omit<RunRecord, 'logs'>[] {
+    const out: Omit<RunRecord, 'logs'>[] = [];
+    for (const record of this.runs.values()) {
+      const { logs: _logs, ...summary } = record;
+      void _logs;
+      out.push(summary);
+    }
+    // Newest first.
+    out.sort((a, b) => b.startedAt - a.startedAt);
+    return out;
+  }
+
   create(id: string, args: string[]): RunRecord {
     if (this.activeId) {
       throw new Error('A run is already active');

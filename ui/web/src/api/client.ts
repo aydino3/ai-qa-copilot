@@ -71,6 +71,10 @@ export async function fetchRun(runId: string): Promise<RunSummary> {
   return jsonOrThrow<RunSummary>(await fetch(`/api/runs/${encodeURIComponent(runId)}`));
 }
 
+export async function fetchRuns(): Promise<{ runs: RunSummary[] }> {
+  return jsonOrThrow<{ runs: RunSummary[] }>(await fetch('/api/runs'));
+}
+
 export async function cancelRun(runId: string): Promise<void> {
   await jsonOrThrow<{ ok: true }>(
     await fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
@@ -102,11 +106,17 @@ export interface GenerateTestResponse {
   aiEnabled: boolean;
 }
 
-export async function generateTest(targetUrl: string, steps: string): Promise<GenerateTestResponse> {
+export interface GenerateTestOptions {
+  targetUrl: string;
+  steps: string;
+  visualRegression?: boolean;
+}
+
+export async function generateTest(opts: GenerateTestOptions): Promise<GenerateTestResponse> {
   const res = await fetch('/api/generate-test', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ targetUrl, steps }),
+    body: JSON.stringify(opts),
   });
   return jsonOrThrow<GenerateTestResponse>(res);
 }

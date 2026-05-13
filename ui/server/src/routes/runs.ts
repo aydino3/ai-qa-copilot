@@ -4,6 +4,10 @@ import { startRun, cancelRun, type RunOptions } from '../runner/spawnRun.js';
 
 export const runsRouter: Router = Router();
 
+runsRouter.get('/', (_req: Request, res: Response) => {
+  res.json({ runs: runRegistry.list() });
+});
+
 runsRouter.post('/', (req: Request, res: Response) => {
   if (runRegistry.hasActive()) {
     const active = runRegistry.getActive();

@@ -3,10 +3,12 @@ import { Dashboard } from './pages/Dashboard';
 import { RunDetails } from './pages/RunDetails';
 import { Settings } from './pages/Settings';
 import { NewTest } from './pages/NewTest';
+import { History } from './pages/History';
 
 const NAV = [
   { to: '/', label: '⊞ Dashboard', end: true },
   { to: '/new-test', label: '✦ New test', end: false },
+  { to: '/history', label: '⌛ History', end: false },
   { to: '/settings', label: '⚙ Settings', end: false },
 ];
 
@@ -40,6 +42,7 @@ export function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/runs/:runId" element={<RunDetails />} />
           <Route path="/new-test" element={<NewTest />} />
+          <Route path="/history" element={<History />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>

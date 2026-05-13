@@ -10,7 +10,7 @@ const AI_GENERATED_DIR = path.join(FRAMEWORK_ROOT, 'tests', 'ai-generated');
 const AI_ENABLED = process.env.AI_ENABLED === 'true';
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 
-const SYSTEM_PROMPT = `You are an expert Playwright test engineer. Given a target URL/feature and natural language test steps, generate a single, complete, production-ready Playwright TypeScript test file.
+const BASE_SYSTEM_PROMPT = `You are an expert Playwright test engineer. Given a target URL/feature and natural language test steps, generate a single, complete, production-ready Playwright TypeScript test file.
 
 Rules:
 - Import { test, expect } from '@playwright/test'
@@ -21,23 +21,33 @@ Rules:
 - Always await expect(page).toHaveURL(...) after navigation
 - Output ONLY the TypeScript file contents — no markdown fences, no explanation`;
 
+const VISUAL_REGRESSION_PROMPT_ADDENDUM = `
+
+Visual regression requirement (REQUIRED for this test):
+- Add the tag '@visual' alongside '@ai-generated'.
+- After the page reaches a stable state in each meaningful step, call \`await expect(page).toHaveScreenshot()\` with a descriptive name argument, e.g. \`await expect(page).toHaveScreenshot('login-loaded.png')\`.
+- Include at least one full-page screenshot assertion at the end of the test.
+- Prefer screenshotting after explicit waits on visible elements rather than arbitrary timeouts.`;
+
 interface GenerateBody {
   targetUrl?: string;
   steps?: string;
+  visualRegression?: boolean;
 }
 
 generateTestRouter.post('/', async (req: Request, res: Response) => {
-  const { targetUrl, steps } = (req.body ?? {}) as GenerateBody;
+  const { targetUrl, steps, visualRegression } = (req.body ?? {}) as GenerateBody;
   if (!targetUrl || !steps) {
     res.status(400).json({ error: 'missing_fields', message: '`targetUrl` and `steps` are required' });
     return;
   }
 
+  const wantVisual = !!visualRegression;
   let code: string;
   try {
     code = AI_ENABLED && API_KEY
-      ? await generateWithAI(targetUrl, steps)
-      : generateMock(targetUrl, steps);
+      ? await generateWithAI(targetUrl, steps, wantVisual)
+      : generateMock(targetUrl, steps, wantVisual);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(502).json({ error: 'generation_failed', message });
@@ -61,24 +71,38 @@ generateTestRouter.post('/', async (req: Request, res: Response) => {
     return;
   }
 
-  res.status(201).json({ filename, filePath, code, aiEnabled: AI_ENABLED && !!API_KEY });
+  res.status(201).json({
+    filename,
+    filePath,
+    code,
+    aiEnabled: AI_ENABLED && !!API_KEY,
+    visualRegression: wantVisual,
+  });
 });
 
-async function generateWithAI(targetUrl: string, steps: string): Promise<string> {
+async function generateWithAI(
+  targetUrl: string,
+  steps: string,
+  visualRegression: boolean
+): Promise<string> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: API_KEY });
+
+  const systemPrompt = visualRegression
+    ? BASE_SYSTEM_PROMPT + VISUAL_REGRESSION_PROMPT_ADDENDUM
+    : BASE_SYSTEM_PROMPT;
 
   const userPrompt = `Target URL / Feature: ${targetUrl}
 
 Natural language steps:
 ${steps}
 
-Generate the complete Playwright TypeScript test file.`;
+${visualRegression ? 'Visual regression: ENABLED — include toHaveScreenshot() assertions.\n\n' : ''}Generate the complete Playwright TypeScript test file.`;
 
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],
   });
 
@@ -89,13 +113,23 @@ Generate the complete Playwright TypeScript test file.`;
   return block.text.replace(/^```(?:typescript|ts)?\n?/m, '').replace(/\n?```$/m, '').trim() + '\n';
 }
 
-function generateMock(targetUrl: string, steps: string): string {
+function generateMock(targetUrl: string, steps: string, visualRegression: boolean): string {
   const id = crypto.randomBytes(3).toString('hex');
+  const tag = visualRegression ? '@ai-generated @visual' : '@ai-generated';
   const stepLines = steps
     .split('\n')
     .filter(Boolean)
-    .map((s, i) => `  await test.step(${JSON.stringify(s.trim())}, async () => {\n    // TODO: implement step ${i + 1}\n  });`)
+    .map((s, i) => {
+      const screenshot = visualRegression
+        ? `\n    await expect(page).toHaveScreenshot('step-${i + 1}.png');`
+        : '';
+      return `  await test.step(${JSON.stringify(s.trim())}, async () => {\n    // TODO: implement step ${i + 1}${screenshot}\n  });`;
+    })
     .join('\n\n');
+
+  const finalScreenshot = visualRegression
+    ? `\n\n    await test.step('Visual regression — full page snapshot', async () => {\n      await expect(page).toHaveScreenshot('final.png', { fullPage: true });\n    });`
+    : '';
 
   return `// AI-generated test (mock — set AI_ENABLED=true and ANTHROPIC_API_KEY to use Claude)
 // Generated: ${new Date().toISOString()}
@@ -104,14 +138,14 @@ import { test, expect } from '@playwright/test';
 
 test(
   'AI-generated: ${targetUrl.slice(0, 80)}',
-  { tag: '@ai-generated' },
+  { tag: '${tag}' },
   async ({ page }) => {
     await test.step('Navigate to target', async () => {
       await page.goto(${JSON.stringify(targetUrl)});
       await expect(page).toHaveURL(${JSON.stringify(targetUrl)});
     });
 
-${stepLines}
+${stepLines}${finalScreenshot}
   }
 );
 `;
