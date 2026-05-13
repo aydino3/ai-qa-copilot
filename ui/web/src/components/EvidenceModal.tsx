@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { TestEvidence, EvidenceStep } from '../api/client';
-import { Modal } from './Modal';
 
 function fmtMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -18,52 +17,39 @@ function StepRow({ step, depth }: { step: EvidenceStep; depth: number }) {
   return (
     <>
       <div
-        className={`flex items-start gap-1.5 py-1 rounded px-1 ${hasChildren ? 'cursor-pointer hover:bg-white/[0.03]' : ''}`}
-        style={{ paddingLeft: `${6 + depth * 18}px` }}
+        className={`flex items-start gap-1.5 py-1 rounded px-1 ${hasChildren ? 'cursor-pointer hover:bg-white/[0.04]' : ''}`}
+        style={{ paddingLeft: `${6 + depth * 20}px` }}
         onClick={hasChildren ? () => setOpen((o) => !o) : undefined}
       >
-        {/* Expand toggle */}
         <span className="shrink-0 w-3 text-slate-600 text-xs mt-0.5 text-center select-none">
           {hasChildren ? (open ? '▾' : '▸') : ''}
         </span>
-
-        {/* Status icon */}
         <span className="shrink-0 text-xs mt-0.5 w-3 text-center">
           {step.status === 'failed'
             ? <span className="text-rose-400">✗</span>
             : <span className="text-emerald-400">✓</span>}
         </span>
-
-        {/* Title */}
-        <span className={`flex-1 text-xs leading-relaxed ${
-          depth === 0
-            ? 'text-slate-200 font-medium'
-            : isInternal
-              ? 'text-slate-500 font-mono'
-              : 'text-slate-400'
+        <span className={`flex-1 text-sm leading-relaxed ${
+          depth === 0 ? 'text-slate-200 font-medium'
+          : isInternal ? 'text-slate-500 font-mono text-xs'
+          : 'text-slate-400'
         }`}>
           {step.title}
         </span>
-
-        {/* Duration */}
         {step.duration > 0 && (
-          <span className="shrink-0 text-xs text-slate-600 font-mono tabular-nums ml-2">
+          <span className="shrink-0 text-xs text-slate-600 font-mono tabular-nums ml-3">
             {fmtMs(step.duration)}
           </span>
         )}
       </div>
-
-      {/* Inline error */}
       {step.error && (
-        <div
+        <pre
           className="text-xs text-rose-300/90 font-mono bg-rose-950/30 rounded p-2 my-0.5 whitespace-pre-wrap break-all"
-          style={{ marginLeft: `${6 + depth * 18 + 28}px`, marginRight: '4px' }}
+          style={{ marginLeft: `${6 + depth * 20 + 28}px`, marginRight: '8px' }}
         >
           {step.error}
-        </div>
+        </pre>
       )}
-
-      {/* Children */}
       {open && hasChildren && step.steps.map((child, i) => (
         <StepRow key={i} step={child} depth={depth + 1} />
       ))}
@@ -75,8 +61,12 @@ function StepRow({ step, depth }: { step: EvidenceStep; depth: number }) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-2">
-      <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</h4>
+    <div className="space-y-3">
+      <h4 className="text-xs font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
+        <span className="flex-1 h-px bg-white/[0.06]" />
+        {title}
+        <span className="flex-1 h-px bg-white/[0.06]" />
+      </h4>
       {children}
     </div>
   );
@@ -84,25 +74,45 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 // ─── Image panel ──────────────────────────────────────────────────────────────
 
-function ImagePanel({ label, src }: { label: string; src: string }) {
+function ImagePanel({ label, src, highlight }: { label: string; src: string; highlight?: 'pass' | 'fail' | 'diff' }) {
   const [errored, setErrored] = useState(false);
   if (errored) return null;
+
+  const borderColor =
+    highlight === 'pass' ? 'border-emerald-500/30' :
+    highlight === 'fail' ? 'border-rose-500/30' :
+    highlight === 'diff' ? 'border-amber-500/30' :
+    'border-white/[0.08]';
+
+  const labelColor =
+    highlight === 'pass' ? 'text-emerald-400' :
+    highlight === 'fail' ? 'text-rose-400' :
+    highlight === 'diff' ? 'text-amber-400' :
+    'text-slate-400';
+
   return (
-    <div className="space-y-1">
-      <div className="text-xs text-slate-500 text-center font-medium">{label}</div>
-      <a href={src} target="_blank" rel="noopener noreferrer" className="block">
+    <div className="space-y-2 flex flex-col">
+      <div className={`text-xs font-semibold text-center uppercase tracking-wider ${labelColor}`}>{label}</div>
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`block border-2 ${borderColor} rounded-lg overflow-hidden hover:border-brand-500/50 transition-colors flex-1`}
+        title="Click to open full-size"
+      >
         <img
           src={src}
           alt={label}
-          className="w-full rounded border border-white/[0.08] object-contain bg-surface-2 hover:border-brand-500/40 transition-colors"
+          className="w-full h-full object-contain bg-[#111] min-h-48"
           onError={() => setErrored(true)}
         />
       </a>
+      <div className="text-xs text-slate-600 text-center">click to open full-size</div>
     </div>
   );
 }
 
-// ─── Main modal ───────────────────────────────────────────────────────────────
+// ─── Main full-screen overlay ─────────────────────────────────────────────────
 
 export function EvidenceModal({
   test,
@@ -111,132 +121,180 @@ export function EvidenceModal({
   test: TestEvidence;
   onClose: () => void;
 }) {
-  const hasSteps = test.steps.length > 0;
-  const hasScreenshots = test.screenshots.length > 0;
-  const hasVideo = !!test.video;
-  const hasTrace = !!test.trace;
-  const hasVisual = !!(test.baseline || test.actual || test.diff);
-  const hasErrors = test.errors.length > 0;
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', handler);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
 
-  const titleIcon = test.ok
-    ? <span className="text-emerald-400">✓</span>
-    : <span className="text-rose-400">✗</span>;
+  const hasSteps     = test.steps.length > 0;
+  const hasScreenshots = test.screenshots.length > 0;
+  const hasVideo     = !!test.video;
+  const hasTrace     = !!test.trace;
+  const hasVisual    = !!(test.baseline || test.actual || test.diff);
+  const hasErrors    = test.errors.length > 0;
+  const hasMedia     = hasVideo || hasVisual || hasScreenshots || hasTrace;
+
+  // Count visual panels for grid
+  const visualPanels = [test.baseline, test.actual, test.diff].filter(Boolean).length;
 
   return (
-    <Modal
-      open
-      onClose={onClose}
-      width="lg"
-      title={
-        <span className="flex items-center gap-2 min-w-0">
-          {titleIcon}
-          <span className="truncate">{test.specTitle || test.testTitle}</span>
-          <span className="shrink-0 text-xs text-slate-500 font-normal font-mono ml-1">
-            {test.projectName} · {fmtMs(test.duration)}
-          </span>
-          {test.retry > 0 && (
-            <span className="shrink-0 text-xs text-amber-400 font-normal">retry #{test.retry}</span>
-          )}
-        </span>
-      }
+    <div
+      className="fixed inset-0 z-50 bg-surface/95 backdrop-blur-sm overflow-y-auto animate-fade-in"
+      onClick={onClose}
     >
-      <div className="space-y-6 max-h-[75vh] overflow-y-auto pr-1">
-
-        {/* Errors */}
-        {hasErrors && (
-          <Section title="Errors">
-            <div className="space-y-2">
-              {test.errors.map((err, i) => (
-                <pre key={i} className="text-xs text-rose-300 font-mono bg-rose-950/30 rounded p-3 whitespace-pre-wrap break-all">
-                  {err}
-                </pre>
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {/* Steps */}
-        {hasSteps && (
-          <Section title={`Steps (${test.steps.length})`}>
-            <div className="border border-white/[0.06] rounded-lg bg-surface-2/50 py-1 overflow-hidden">
-              {test.steps.map((step, i) => (
-                <StepRow key={i} step={step} depth={0} />
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {/* Video */}
-        {hasVideo && (
-          <Section title="Video Recording">
-            <video
-              src={test.video}
-              controls
-              className="w-full rounded-lg border border-white/[0.08] bg-black"
-            />
-          </Section>
-        )}
-
-        {/* Visual regression */}
-        {hasVisual && (
-          <Section title="Visual Regression">
-            <div className={`grid gap-3 ${
-              (test.baseline ? 1 : 0) + (test.actual ? 1 : 0) + (test.diff ? 1 : 0) === 3
-                ? 'grid-cols-3'
-                : 'grid-cols-2'
-            }`}>
-              {test.baseline && <ImagePanel label="Baseline (expected)" src={test.baseline} />}
-              {test.actual && <ImagePanel label="Actual" src={test.actual} />}
-              {test.diff && <ImagePanel label="Diff" src={test.diff} />}
-            </div>
-            {!test.actual && !test.diff && test.baseline && (
-              <p className="text-xs text-slate-500 text-center">Snapshot matches baseline ✓</p>
-            )}
-          </Section>
-        )}
-
-        {/* Screenshots */}
-        {hasScreenshots && (
-          <Section title={`Screenshots (${test.screenshots.length})`}>
-            <div className={`grid gap-3 ${test.screenshots.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-              {test.screenshots.map((url, i) => (
-                <ImagePanel key={i} label={`Screenshot ${i + 1}`} src={url} />
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {/* Trace */}
-        {hasTrace && (
-          <Section title="Playwright Trace">
-            <div className="flex items-center gap-3 p-3 rounded-lg border border-white/[0.06] bg-surface-2/50">
-              <span className="text-2xl">⬡</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm text-slate-300 font-medium">trace.zip</div>
-                <div className="text-xs text-slate-500 mt-0.5">
-                  Open at{' '}
-                  <a
-                    href="https://trace.playwright.dev"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-brand-400 hover:underline"
-                  >
-                    trace.playwright.dev
-                  </a>
-                  {' '}or run <code className="font-mono text-slate-400">npx playwright show-trace</code>
-                </div>
+      <div
+        className="max-w-[1400px] mx-auto px-6 py-0 min-h-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Sticky header */}
+        <header className="sticky top-0 z-10 bg-surface/95 backdrop-blur-md border-b border-white/[0.06] -mx-6 px-6 py-4 mb-8 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className={`text-2xl font-bold ${test.ok ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {test.ok ? '✓' : '✗'}
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg font-bold text-white truncate">
+                {test.specTitle || test.testTitle}
+              </h2>
+              <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
+                <span className="font-mono">{test.projectName}</span>
+                <span>·</span>
+                <span className="font-mono">{fmtMs(test.duration)}</span>
+                {test.retry > 0 && (
+                  <span className="text-amber-400 font-medium">retry #{test.retry}</span>
+                )}
+                {hasVideo    && <span className="text-brand-400">▶ video</span>}
+                {hasVisual   && <span className="text-purple-400">⊞ visual</span>}
+                {hasTrace    && <span>⬡ trace</span>}
               </div>
-              <a
-                href={test.trace}
-                download
-                className="btn-ghost text-xs shrink-0"
-              >
-                ↓ Download
-              </a>
             </div>
-          </Section>
-        )}
+          </div>
+          <button
+            onClick={onClose}
+            className="btn-ghost shrink-0 flex items-center gap-2 text-sm"
+            aria-label="Close"
+          >
+            <span className="text-base leading-none">✕</span>
+            <span className="hidden sm:inline">Close</span>
+            <span className="hidden sm:inline text-slate-600 text-xs">(Esc)</span>
+          </button>
+        </header>
+
+        {/* Two-column layout on large screens */}
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-8 pb-12">
+
+          {/* LEFT — steps + errors */}
+          <div className="space-y-8">
+            {hasErrors && (
+              <Section title="Errors">
+                <div className="space-y-3">
+                  {test.errors.map((err, i) => (
+                    <pre key={i} className="text-sm text-rose-300 font-mono bg-rose-950/30 border border-rose-700/30 rounded-lg p-4 whitespace-pre-wrap break-all overflow-x-auto">
+                      {err}
+                    </pre>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {hasSteps && (
+              <Section title={`Steps · ${test.steps.length}`}>
+                <div className="border border-white/[0.06] rounded-xl bg-surface-2/60 py-2 overflow-hidden">
+                  {test.steps.map((step, i) => (
+                    <StepRow key={i} step={step} depth={0} />
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {!hasSteps && !hasErrors && (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-600 space-y-2">
+                <span className="text-3xl">📋</span>
+                <span className="text-sm">No step data recorded</span>
+                <span className="text-xs text-center max-w-xs">
+                  Add <code className="text-slate-400 font-mono">test.step()</code> blocks to your test for step-level evidence
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT — media */}
+          {hasMedia && (
+            <div className="space-y-8">
+              {/* Video */}
+              {hasVideo && (
+                <Section title="Video Recording">
+                  <video
+                    src={test.video}
+                    controls
+                    className="w-full rounded-xl border border-white/[0.08] bg-black shadow-card"
+                    style={{ maxHeight: '480px' }}
+                  />
+                </Section>
+              )}
+
+              {/* Visual regression — 3-panel comparison */}
+              {hasVisual && (
+                <Section title="Visual Regression">
+                  <div className={`grid gap-4 ${visualPanels === 3 ? 'grid-cols-3' : visualPanels === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                    {test.baseline && (
+                      <ImagePanel label="Baseline" src={test.baseline} highlight="pass" />
+                    )}
+                    {test.actual && (
+                      <ImagePanel label="Actual" src={test.actual} highlight="fail" />
+                    )}
+                    {test.diff && (
+                      <ImagePanel label="Diff" src={test.diff} highlight="diff" />
+                    )}
+                  </div>
+                  {!test.actual && !test.diff && test.baseline && (
+                    <p className="text-sm text-emerald-400 text-center py-2">
+                      ✓ Screenshot matches baseline
+                    </p>
+                  )}
+                </Section>
+              )}
+
+              {/* Screenshots */}
+              {hasScreenshots && (
+                <Section title={`Screenshots · ${test.screenshots.length}`}>
+                  <div className={`grid gap-4 ${test.screenshots.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                    {test.screenshots.map((url, i) => (
+                      <ImagePanel key={i} label={`Screenshot ${i + 1}`} src={url} />
+                    ))}
+                  </div>
+                </Section>
+              )}
+
+              {/* Trace */}
+              {hasTrace && (
+                <Section title="Playwright Trace">
+                  <div className="flex items-center gap-4 p-4 rounded-xl border border-white/[0.06] bg-surface-2/60">
+                    <span className="text-3xl">⬡</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-slate-200">trace.zip</div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        Open at{' '}
+                        <a href="https://trace.playwright.dev" target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:underline">
+                          trace.playwright.dev
+                        </a>
+                        {' '}· or run{' '}
+                        <code className="font-mono text-slate-400">npx playwright show-trace &lt;file&gt;</code>
+                      </div>
+                    </div>
+                    <a href={test.trace} download className="btn-ghost text-sm shrink-0">↓ Download</a>
+                  </div>
+                </Section>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </Modal>
+    </div>
   );
 }

@@ -150,29 +150,30 @@ export function RunDetails() {
         ))}
       </div>
 
-      {/* Content panel */}
-      <div className="card p-5 min-h-48">
-        {viewMode === 'evidence' && (
-          evidenceLoading ? (
-            <Spinner label="Loading test evidence…" />
-          ) : hasEvidence ? (
-            <RunReport evidence={evidence!} />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-48 text-slate-500 space-y-2">
-              <span className="text-3xl">📭</span>
-              <span className="text-sm">
-                {isRunning ? 'Evidence available after run completes' : 'No test results recorded'}
-              </span>
-            </div>
-          )
-        )}
-        {viewMode === 'live' && (
-          <ManagerTimeline stepEvents={stream.stepEvents} runStatus={status} exitCode={exitCode} />
-        )}
-        {viewMode === 'developer' && (
-          <Terminal logs={stream.logs} />
-        )}
-      </div>
+      {/* Content panel — Evidence gets its own borderless container; other views stay in a card */}
+      {viewMode === 'evidence' ? (
+        evidenceLoading ? (
+          <div className="card p-5 min-h-48"><Spinner label="Loading test evidence…" /></div>
+        ) : hasEvidence ? (
+          <RunReport evidence={evidence!} />
+        ) : (
+          <div className="card p-5 flex flex-col items-center justify-center h-48 text-slate-500 space-y-2">
+            <span className="text-3xl">📭</span>
+            <span className="text-sm">
+              {isRunning ? 'Evidence available after run completes' : 'No test results recorded'}
+            </span>
+          </div>
+        )
+      ) : (
+        <div className="card p-5 min-h-48">
+          {viewMode === 'live' && (
+            <ManagerTimeline stepEvents={stream.stepEvents} runStatus={status} exitCode={exitCode} />
+          )}
+          {viewMode === 'developer' && (
+            <Terminal logs={stream.logs} />
+          )}
+        </div>
+      )}
     </section>
   );
 }
