@@ -7,7 +7,6 @@ export const generateTestRouter: Router = Router();
 
 const AI_GENERATED_DIR = path.join(FRAMEWORK_ROOT, 'tests', 'ai-generated');
 const AI_ENABLED = process.env.AI_ENABLED === 'true';
-const API_KEY = process.env.GEMINI_API_KEY;
 
 const BASE_SYSTEM_PROMPT = `You are an expert Playwright test engineer. Given a target URL/feature, natural language test steps, and optional tags, generate a single, complete, production-ready Playwright TypeScript test file.
 
@@ -83,7 +82,7 @@ generateTestRouter.post('/', async (req: Request, res: Response) => {
 
   let code: string;
   try {
-    code = AI_ENABLED && API_KEY
+    code = AI_ENABLED && process.env.GEMINI_API_KEY
       ? await generateWithAI(targetUrl, steps, userTags, wantVisual)
       : generateMock(targetUrl, steps, userTags, wantVisual);
   } catch (err) {
@@ -105,7 +104,7 @@ generateTestRouter.post('/', async (req: Request, res: Response) => {
     return;
   }
 
-  res.status(201).json({ filename, filePath, code, aiEnabled: AI_ENABLED && !!API_KEY, visualRegression: wantVisual });
+  res.status(201).json({ filename, filePath, code, aiEnabled: AI_ENABLED && !!process.env.GEMINI_API_KEY, visualRegression: wantVisual });
 });
 
 async function generateWithAI(
@@ -115,7 +114,7 @@ async function generateWithAI(
   visualRegression: boolean,
 ): Promise<string> {
   const { GoogleGenerativeAI } = await import('@google/generative-ai');
-  const client = new GoogleGenerativeAI(API_KEY as string);
+  const client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
 
   const systemInstruction = visualRegression
     ? BASE_SYSTEM_PROMPT + VISUAL_REGRESSION_ADDENDUM

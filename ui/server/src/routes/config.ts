@@ -7,8 +7,11 @@ export const configRouter: Router = Router();
 
 const ENV_PATH = path.join(FRAMEWORK_ROOT, '.env');
 
-// Keys that will never be returned or updated through this API.
-const REDACTED_KEYS = new Set(['GEMINI_API_KEY']);
+// Keys that will never be returned in GET responses (they may still be written).
+const READ_REDACTED_KEYS = new Set(['GEMINI_API_KEY']);
+
+// Keys that are completely blocked from both read and write (reserved/internal).
+const FULLY_BLOCKED_KEYS = new Set<string>();
 
 interface EnvLine {
   type: 'comment' | 'blank' | 'pair';
@@ -35,14 +38,14 @@ function serializeEnvFile(lines: EnvLine[], updates: Record<string, string>): st
   const out: string[] = lines.map((line) => {
     if (line.type !== 'pair' || !line.key) return line.raw;
     seen.add(line.key);
-    if (line.key in updates && !REDACTED_KEYS.has(line.key)) {
+    if (line.key in updates && !FULLY_BLOCKED_KEYS.has(line.key)) {
       return `${line.key}=${updates[line.key]}`;
     }
     return line.raw;
   });
   // Append any keys from updates that didn't already exist in the file.
   for (const [key, value] of Object.entries(updates)) {
-    if (!seen.has(key) && !REDACTED_KEYS.has(key)) {
+    if (!seen.has(key) && !FULLY_BLOCKED_KEYS.has(key)) {
       out.push(`${key}=${value}`);
     }
   }
@@ -59,7 +62,7 @@ configRouter.get('/', async (_req: Request, res: Response) => {
   const lines = parseEnvFile(contents);
   const vars: Record<string, string> = {};
   for (const line of lines) {
-    if (line.type === 'pair' && line.key && !REDACTED_KEYS.has(line.key)) {
+    if (line.type === 'pair' && line.key && !READ_REDACTED_KEYS.has(line.key) && !FULLY_BLOCKED_KEYS.has(line.key)) {
       vars[line.key] = line.value ?? '';
     }
   }
@@ -72,7 +75,7 @@ configRouter.post('/', async (req: Request, res: Response) => {
   const safeKey = /^[A-Z_][A-Z0-9_]*$/i;
   const cleaned: Record<string, string> = {};
   for (const [k, v] of Object.entries(updates)) {
-    if (!safeKey.test(k) || REDACTED_KEYS.has(k)) continue;
+    if (!safeKey.test(k) || FULLY_BLOCKED_KEYS.has(k)) continue;
     cleaned[k] = typeof v === 'string' ? v : String(v ?? '');
   }
 
@@ -86,6 +89,11 @@ configRouter.post('/', async (req: Request, res: Response) => {
   const updated = serializeEnvFile(lines, cleaned);
   try {
     await fs.writeFile(ENV_PATH, updated, 'utf8');
+    // Sync written values into the live process so callers (e.g. visual-inspector,
+    // generateTest) pick up the new key immediately without a server restart.
+    for (const [key, value] of Object.entries(cleaned)) {
+      process.env[key] = value;
+    }
     res.json({ ok: true, envPath: ENV_PATH, updated: Object.keys(cleaned) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
