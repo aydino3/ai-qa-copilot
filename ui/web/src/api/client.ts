@@ -76,3 +76,37 @@ export async function cancelRun(runId: string): Promise<void> {
     await fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
   );
 }
+
+export interface ConfigResponse {
+  vars: Record<string, string>;
+  envPath: string;
+}
+
+export async function fetchConfig(): Promise<ConfigResponse> {
+  return jsonOrThrow<ConfigResponse>(await fetch('/api/config'));
+}
+
+export async function saveConfig(vars: Record<string, string>): Promise<{ ok: true; updated: string[] }> {
+  const res = await fetch('/api/config', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(vars),
+  });
+  return jsonOrThrow<{ ok: true; updated: string[] }>(res);
+}
+
+export interface GenerateTestResponse {
+  filename: string;
+  filePath: string;
+  code: string;
+  aiEnabled: boolean;
+}
+
+export async function generateTest(targetUrl: string, steps: string): Promise<GenerateTestResponse> {
+  const res = await fetch('/api/generate-test', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ targetUrl, steps }),
+  });
+  return jsonOrThrow<GenerateTestResponse>(res);
+}
