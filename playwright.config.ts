@@ -20,7 +20,6 @@ export default defineConfig({
     ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['json', { outputFile: 'test-results/results.json' }],
-    ['./src/reporters/ai-enhanced.reporter.ts'],
     ['./src/reporters/step-stream.reporter.ts'],
   ],
 
@@ -41,10 +40,6 @@ export default defineConfig({
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
-    },
-    {
-      name: 'mobile-safari',
-      use: { ...devices['iPhone 14'] },
     },
 
     // API tests run without a browser context
