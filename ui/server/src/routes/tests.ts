@@ -17,19 +17,26 @@ interface ResolvedTest {
 }
 
 /**
- * Resolve a user-supplied test file path safely. The path is taken either
- * absolute (and re-anchored under tests/) or relative to FRAMEWORK_ROOT.
+ * Resolve a user-supplied test file path safely.
+ * Accepts paths relative to FRAMEWORK_ROOT (e.g. "tests/smoke/demo.smoke.ts"),
+ * relative to the tests/ dir (e.g. "smoke/demo.smoke.ts"), or absolute.
  * Rejects path traversal and non-test extensions.
  */
 function resolveTestFile(file: string): ResolvedTest | { error: string; status: number } {
   if (!file || typeof file !== 'string') {
     return { error: '`file` is required', status: 400 };
   }
-  // Strip leading slash, normalise, and resolve against FRAMEWORK_ROOT.
-  const cleaned = file.replace(/^[/\\]+/, '');
-  const absPath = path.resolve(FRAMEWORK_ROOT, cleaned);
+  // Strip leading slashes and normalise separators.
+  const cleaned = file.replace(/^[/\\]+/, '').replace(/\\/g, '/');
 
-  // Path-traversal guard: must live inside tests/.
+  // Resolve: if the path already starts with "tests/" anchor it to
+  // FRAMEWORK_ROOT; otherwise anchor it directly to TESTS_DIR so callers
+  // can pass paths relative to either root without breaking.
+  const absPath = cleaned.startsWith('tests/')
+    ? path.resolve(FRAMEWORK_ROOT, cleaned)
+    : path.resolve(TESTS_DIR, cleaned);
+
+  // Path-traversal guard: resolved path must remain inside TESTS_DIR.
   if (!absPath.startsWith(TESTS_DIR + path.sep) && absPath !== TESTS_DIR) {
     return { error: 'file must live inside tests/', status: 400 };
   }
