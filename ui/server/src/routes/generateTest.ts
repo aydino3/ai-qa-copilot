@@ -29,8 +29,12 @@ const VISUAL_REGRESSION_ADDENDUM = `
 
 Visual regression requirement (REQUIRED for this test):
 - Add the tag '@visual' to the tags array.
-- After the page reaches a stable state in each meaningful step, call \`await expect(page).toHaveScreenshot('step-N.png')\` with a descriptive name.
-- Include at least one full-page screenshot assertion at the end of the test.
+- Import { inspectLayoutWithAI } from '@ai/visual-inspector' at the top of the file.
+- Import * as path from 'node:path' and import * as fs from 'node:fs/promises' at the top.
+- After the page reaches a stable state in each meaningful step, capture a screenshot with \`await page.screenshot({ path: screenshotPath })\` then call \`await inspectLayoutWithAI(screenshotPath)\`.
+- If the result's \`passed\` property is false, throw an Error with the \`reason\` text so the test step fails with Gemini's visual feedback.
+- Store screenshots in the test-results/ai-visual/ directory, named descriptively (e.g. 'test-results/ai-visual/step-1.png').
+- Include at least one full-page AI visual check at the end of the test (use { fullPage: true } in page.screenshot options).
 - Prefer screenshotting after explicit waits on visible elements.`;
 
 interface GenerateBody {
@@ -124,7 +128,7 @@ Tags: ${allTags.join(', ')}
 Natural language steps:
 ${steps}
 
-${visualRegression ? 'Visual regression: ENABLED — include toHaveScreenshot() assertions.\n\n' : ''}Generate the complete Playwright TypeScript test file now. Output raw TypeScript only — no markdown fences.`;
+${visualRegression ? 'Visual regression: ENABLED — use inspectLayoutWithAI() (NOT toHaveScreenshot()) as described in the system prompt.\n\n' : ''}Generate the complete Playwright TypeScript test file now. Output raw TypeScript only — no markdown fences.`;
 
   const model = client.getGenerativeModel({
     model: 'gemini-2.5-flash',
@@ -158,23 +162,32 @@ function generateMock(
 
   const stepBlocks = parsedSteps.map((step, i) => {
     const screenshot = visualRegression
-      ? `\n    await expect(page).toHaveScreenshot(${JSON.stringify(`step-${i + 1}.png`)});`
+      ? `\n    const _shot${i + 1} = 'test-results/ai-visual/step-${i + 1}.png';\n    await page.screenshot({ path: _shot${i + 1} });\n    const _result${i + 1} = await inspectLayoutWithAI(_shot${i + 1});\n    if (!_result${i + 1}.passed) throw new Error(_result${i + 1}.reason);`
       : '';
     return `  await test.step(${JSON.stringify(step)}, async () => {\n    // TODO: implement\n    await page.waitForLoadState('domcontentloaded');${screenshot}\n  });`;
   }).join('\n\n');
 
   const finalScreenshot = visualRegression
-    ? `\n\n  await test.step('Full-page visual snapshot', async () => {\n    await expect(page).toHaveScreenshot('final.png', { fullPage: true });\n  });`
+    ? `\n\n  await test.step('Full-page visual snapshot (AI)', async () => {\n    const _finalShot = 'test-results/ai-visual/final-full.png';\n    await page.screenshot({ path: _finalShot, fullPage: true });\n    const _finalResult = await inspectLayoutWithAI(_finalShot);\n    if (!_finalResult.passed) throw new Error(_finalResult.reason);\n  });`
     : '';
 
   const gotoStep = isUrl
     ? `  await test.step('Navigate to ${humanTitle}', async () => {\n    await page.goto(${JSON.stringify(targetUrl)});\n    await expect(page).toHaveURL(${JSON.stringify(targetUrl)});\n  });`
     : `  await test.step('Open ${humanTitle}', async () => {\n    await page.goto(process.env.BASE_URL ?? '/');\n  });`;
 
+  const visualImports = visualRegression
+    ? `import * as fs from 'node:fs/promises';\nimport { inspectLayoutWithAI } from '@ai/visual-inspector';`
+    : '';
+
+  const beforeAll = visualRegression
+    ? `\ntest.beforeAll(async () => {\n  await fs.mkdir('test-results/ai-visual', { recursive: true });\n});\n`
+    : '';
+
   return `// Generated: ${new Date().toISOString()}
 // To use Gemini instead of this template, set AI_ENABLED=true and GEMINI_API_KEY in your .env
 import { test, expect } from '@playwright/test';
-
+${visualImports}
+${beforeAll}
 test(
   ${JSON.stringify(humanTitle)},
   { tag: ${tagsLiteral} },
