@@ -32,6 +32,8 @@ interface InspectBody {
 }
 
 visualInspectRouter.post('/', async (req: Request, res: Response) => {
+  res.setTimeout(60_000);
+
   const { imagePath, imageBase64, mimeType: reqMimeType } = (req.body ?? {}) as InspectBody;
 
   if (!imagePath && !imageBase64) {
@@ -63,6 +65,15 @@ visualInspectRouter.post('/', async (req: Request, res: Response) => {
   } else {
     base64Image = imageBase64 as string;
     mimeType = reqMimeType ?? 'image/png';
+    // Reject obviously malformed payloads before hitting Gemini.
+    if (typeof base64Image !== 'string' || base64Image.length === 0) {
+      res.status(400).json({ error: 'invalid_payload', message: 'imageBase64 must be a non-empty string' });
+      return;
+    }
+    if (!/^[A-Za-z0-9+/]+=*$/.test(base64Image)) {
+      res.status(400).json({ error: 'invalid_payload', message: 'imageBase64 is not valid base64' });
+      return;
+    }
   }
 
   let result: { passed: boolean; reason: string };
@@ -107,6 +118,7 @@ visualInspectRouter.post('/', async (req: Request, res: Response) => {
       result = { passed: true, reason: `AI inspector returned unexpected JSON shape: ${cleaned.slice(0, 200)}` };
     }
   } catch (err) {
+    console.error('GEMINI_ERROR:', err);
     const message = err instanceof Error ? err.message : String(err);
     res.status(502).json({ error: 'gemini_error', message });
     return;
