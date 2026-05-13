@@ -103,7 +103,7 @@ export function cancelRun(id: string): boolean {
 }
 
 function buildPlaywrightArgs(opts: RunOptions): string[] {
-  const args: string[] = ['--reporter=list,json'];
+  const args: string[] = [];
   if (opts.grep) args.push('--grep', opts.grep);
   if (opts.project) args.push('--project', opts.project);
   if (opts.file) args.push(opts.file);
