@@ -1,6 +1,4 @@
 import * as fs from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import * as path from 'node:path';
 
 export interface VisualInspectionResult {
   passed: boolean;
@@ -30,8 +28,9 @@ OR
 {"passed": false, "reason": "Specific description of the structural defect(s) found."}`;
 
 /**
- * Sends a screenshot to Gemini for AI-powered layout inspection.
- * Returns whether the layout passes and a human-readable reason.
+ * Direct Gemini call for server-side use (e.g. scripts or tests running in
+ * the same Node process as the framework root). Playwright-executed tests
+ * should use the /api/visual-inspect HTTP endpoint instead.
  *
  * Requires GEMINI_API_KEY in the environment.
  */
@@ -46,40 +45,10 @@ export async function inspectLayoutWithAI(
   const imageData = await fs.readFile(screenshotPath);
   const base64Image = imageData.toString('base64');
 
-  // Infer MIME type from extension; default to png
   const ext = screenshotPath.split('.').pop()?.toLowerCase() ?? 'png';
   const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
 
-  // Load the Gemini SDK at runtime. Wrapped in try/catch so a missing
-  // dependency surfaces an actionable message instead of an opaque
-  // module-resolution stack trace from Playwright's loader.
-  // Resolve the Gemini SDK with a multi-strategy fallback so Playwright
-  // workers can find it regardless of their CWD or module search path:
-  //   1. Standard ESM dynamic import (works when NODE_PATH is set or the
-  //      worker's resolution naturally finds the package).
-  //   2. createRequire rooted at the framework root — guarantees resolution
-  //      from <project-root>/node_modules even if the worker's CWD differs.
-  let GoogleGenerativeAI: typeof import('@google/generative-ai').GoogleGenerativeAI;
-  try {
-    ({ GoogleGenerativeAI } = await import('@google/generative-ai'));
-  } catch (primaryErr) {
-    try {
-      // __dirname at runtime: <project-root>/src/ai → go up two levels.
-      const projectRoot = path.resolve(__dirname, '..', '..');
-      const rootRequire = createRequire(path.join(projectRoot, 'package.json'));
-      const mod = rootRequire('@google/generative-ai') as typeof import('@google/generative-ai');
-      GoogleGenerativeAI = mod.GoogleGenerativeAI;
-    } catch (fallbackErr) {
-      const primary = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
-      const fallback = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-      throw new Error(
-        `Failed to load @google/generative-ai. Install it in the project root with ` +
-          `\`npm install @google/generative-ai\` and ensure Playwright can resolve ` +
-          `the root node_modules. Dynamic import error: ${primary}. ` +
-          `Root createRequire error: ${fallback}.`,
-      );
-    }
-  }
+  const { GoogleGenerativeAI } = await import('@google/generative-ai');
   const client = new GoogleGenerativeAI(apiKey);
   const model = client.getGenerativeModel({
     model: 'gemini-2.5-flash',
@@ -93,8 +62,6 @@ export async function inspectLayoutWithAI(
   ]);
 
   const text = result.response.text().trim();
-
-  // Strip markdown fences if the model emits them despite instructions
   const cleaned = text
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```\s*$/i, '')
@@ -104,8 +71,6 @@ export async function inspectLayoutWithAI(
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    // Non-JSON response — treat as a pass with a warning so tests don't
-    // fail spuriously due to API response format issues.
     return {
       passed: true,
       reason: `AI inspector returned non-JSON response (treated as pass): ${text.slice(0, 200)}`,

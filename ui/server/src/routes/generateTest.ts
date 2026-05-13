@@ -24,14 +24,34 @@ CRITICAL OUTPUT FORMAT:
 - DO NOT include any preamble, explanation, or trailing commentary.
 - The first character of your response MUST be the first character of the TypeScript code (typically "import").`;
 
+// Default server URL embedded in generated tests. Override with QA_SERVER_URL.
+const QA_SERVER_DEFAULT = 'http://localhost:4000';
+
 const VISUAL_REGRESSION_ADDENDUM = `
 
 Visual regression requirement (REQUIRED for this test):
 - Add the tag '@visual' to the tags array.
-- Import { inspectLayoutWithAI } from '@ai/visual-inspector' at the top of the file.
-- Import * as path from 'node:path' and import * as fs from 'node:fs/promises' at the top.
-- After the page reaches a stable state in each meaningful step, capture a screenshot with \`await page.screenshot({ path: screenshotPath })\` then call \`await inspectLayoutWithAI(screenshotPath)\`.
-- If the result's \`passed\` property is false, throw an Error with the \`reason\` text so the test step fails with Gemini's visual feedback.
+- Do NOT import from '@ai/visual-inspector' or '@google/generative-ai'. All visual analysis is done via a fetch call to the QA server — no extra packages are needed inside the test.
+- Import * as fs from 'node:fs/promises' at the top of the file.
+- Declare this helper function once near the top of the file (after imports, outside the test() block):
+
+async function _visualInspect(screenshotPath: string): Promise<void> {
+  const imageData = await fs.readFile(screenshotPath);
+  const base64Image = imageData.toString('base64');
+  const ext = (screenshotPath.split('.').pop() ?? 'png').toLowerCase();
+  const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+  const serverUrl = process.env.QA_SERVER_URL ?? '${QA_SERVER_DEFAULT}';
+  const res = await fetch(\`\${serverUrl}/api/visual-inspect\`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageBase64: base64Image, mimeType }),
+  });
+  if (!res.ok) throw new Error(\`Visual inspect server error: \${res.status} \${res.statusText}\`);
+  const result = await res.json() as { passed: boolean; reason: string };
+  if (!result.passed) throw new Error(result.reason);
+}
+
+- After the page reaches a stable state in each meaningful step, capture a screenshot then call \`await _visualInspect(screenshotPath)\`.
 - Store screenshots in the test-results/ai-visual/ directory, named descriptively (e.g. 'test-results/ai-visual/step-1.png').
 - Include at least one full-page AI visual check at the end of the test (use { fullPage: true } in page.screenshot options).
 - Prefer screenshotting after explicit waits on visible elements.`;
@@ -127,7 +147,7 @@ Tags: ${allTags.join(', ')}
 Natural language steps:
 ${steps}
 
-${visualRegression ? 'Visual regression: ENABLED — use inspectLayoutWithAI() (NOT toHaveScreenshot()) as described in the system prompt.\n\n' : ''}Generate the complete Playwright TypeScript test file now. Output raw TypeScript only — no markdown fences.`;
+${visualRegression ? 'Visual regression: ENABLED — use _visualInspect() helper with fetch (NOT toHaveScreenshot(), NOT @ai/visual-inspector) as described in the system prompt.\n\n' : ''}Generate the complete Playwright TypeScript test file now. Output raw TypeScript only — no markdown fences.`;
 
   const model = client.getGenerativeModel({
     model: 'gemini-2.5-flash',
@@ -161,22 +181,38 @@ function generateMock(
 
   const stepBlocks = parsedSteps.map((step, i) => {
     const screenshot = visualRegression
-      ? `\n    const _shot${i + 1} = 'test-results/ai-visual/step-${i + 1}.png';\n    await page.screenshot({ path: _shot${i + 1} });\n    const _result${i + 1} = await inspectLayoutWithAI(_shot${i + 1});\n    if (!_result${i + 1}.passed) throw new Error(_result${i + 1}.reason);`
+      ? `\n    const _shot${i + 1} = 'test-results/ai-visual/step-${i + 1}.png';\n    await page.screenshot({ path: _shot${i + 1} });\n    await _visualInspect(_shot${i + 1});`
       : '';
     return `  await test.step(${JSON.stringify(step)}, async () => {\n    // TODO: implement\n    await page.waitForLoadState('domcontentloaded');${screenshot}\n  });`;
   }).join('\n\n');
 
   const finalScreenshot = visualRegression
-    ? `\n\n  await test.step('Full-page visual snapshot (AI)', async () => {\n    const _finalShot = 'test-results/ai-visual/final-full.png';\n    await page.screenshot({ path: _finalShot, fullPage: true });\n    const _finalResult = await inspectLayoutWithAI(_finalShot);\n    if (!_finalResult.passed) throw new Error(_finalResult.reason);\n  });`
+    ? `\n\n  await test.step('Full-page visual snapshot (AI)', async () => {\n    const _finalShot = 'test-results/ai-visual/final-full.png';\n    await page.screenshot({ path: _finalShot, fullPage: true });\n    await _visualInspect(_finalShot);\n  });`
     : '';
 
   const gotoStep = isUrl
     ? `  await test.step('Navigate to ${humanTitle}', async () => {\n    await page.goto(${JSON.stringify(targetUrl)});\n    await expect(page).toHaveURL(${JSON.stringify(targetUrl)});\n  });`
     : `  await test.step('Open ${humanTitle}', async () => {\n    await page.goto(process.env.BASE_URL ?? '/');\n  });`;
 
-  const visualImports = visualRegression
-    ? `import * as fs from 'node:fs/promises';\nimport { inspectLayoutWithAI } from '@ai/visual-inspector';`
-    : '';
+  const visualImports = visualRegression ? `import * as fs from 'node:fs/promises';` : '';
+
+  const visualHelper = visualRegression ? `
+async function _visualInspect(screenshotPath: string): Promise<void> {
+  const imageData = await fs.readFile(screenshotPath);
+  const base64Image = imageData.toString('base64');
+  const ext = (screenshotPath.split('.').pop() ?? 'png').toLowerCase();
+  const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+  const serverUrl = process.env.QA_SERVER_URL ?? '${QA_SERVER_DEFAULT}';
+  const res = await fetch(\`\${serverUrl}/api/visual-inspect\`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageBase64: base64Image, mimeType }),
+  });
+  if (!res.ok) throw new Error(\`Visual inspect server error: \${res.status} \${res.statusText}\`);
+  const result = await res.json() as { passed: boolean; reason: string };
+  if (!result.passed) throw new Error(result.reason);
+}
+` : '';
 
   const beforeAll = visualRegression
     ? `\ntest.beforeAll(async () => {\n  await fs.mkdir('test-results/ai-visual', { recursive: true });\n});\n`
@@ -186,7 +222,7 @@ function generateMock(
 // To use Gemini instead of this template, set AI_ENABLED=true and GEMINI_API_KEY in your .env
 import { test, expect } from '@playwright/test';
 ${visualImports}
-${beforeAll}
+${visualHelper}${beforeAll}
 test(
   ${JSON.stringify(humanTitle)},
   { tag: ${tagsLiteral} },
