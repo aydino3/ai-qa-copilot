@@ -58,6 +58,25 @@ export async function fetchTests(): Promise<TestsResponse> {
   return jsonOrThrow<TestsResponse>(await fetch('/api/tests'));
 }
 
+export async function deleteTest(file: string): Promise<{ ok: true; file: string; fileRemoved: boolean; snapshotsRemoved: boolean }> {
+  return jsonOrThrow(
+    await fetch(`/api/tests?file=${encodeURIComponent(file)}`, { method: 'DELETE' }),
+  );
+}
+
+export async function renameTest(
+  file: string,
+  newName: string,
+): Promise<{ ok: true; file: string; previous?: string; unchanged?: boolean; snapshotsRenamed?: boolean }> {
+  return jsonOrThrow(
+    await fetch('/api/tests', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ file, newName }),
+    }),
+  );
+}
+
 export async function startRun(options: RunOptions): Promise<StartedRun> {
   const res = await fetch('/api/runs', {
     method: 'POST',

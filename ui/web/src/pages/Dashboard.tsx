@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { fetchTests, fetchConfig, startRun, type DiscoveredTest } from '../api/client';
+import {
+  fetchTests, fetchConfig, startRun, deleteTest, renameTest,
+  type DiscoveredTest,
+} from '../api/client';
 import { Spinner } from '../components/Spinner';
 import { TagChip } from '../components/TagChip';
+import { Modal } from '../components/Modal';
 
 const PROJECT_ICON: Record<string, string> = {
   chromium: '🟡',
@@ -22,6 +26,10 @@ function groupByTitle(tests: DiscoveredTest[]): Map<string, DiscoveredTest[]> {
   return map;
 }
 
+function basename(p: string): string {
+  return p.split('/').pop() ?? p;
+}
+
 export function Dashboard() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -34,6 +42,13 @@ export function Dashboard() {
   const [grep, setGrep] = useState('');
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+
+  // CRUD modal state
+  const [deleteTarget, setDeleteTarget] = useState<DiscoveredTest | null>(null);
+  const [renameTarget, setRenameTarget] = useState<DiscoveredTest | null>(null);
+  const [renameInput, setRenameInput] = useState('');
+  const [actionPending, setActionPending] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   function loadTests(cancelled: { v: boolean }) {
     setLoading(true);
@@ -62,7 +77,6 @@ export function Dashboard() {
   const projects = useMemo(() => Array.from(new Set(tests.map((t) => t.projectName))).sort(), [tests]);
   const tags = useMemo(() => Array.from(new Set(tests.flatMap((t) => t.tags))).sort(), [tests]);
 
-  // Group by title for card view (collapse multi-project duplicates)
   const grouped = useMemo(() => groupByTitle(tests), [tests]);
   const cards = useMemo(() => {
     const entries = Array.from(grouped.entries());
@@ -88,6 +102,64 @@ export function Dashboard() {
       setStartError(err instanceof Error ? err.message : String(err));
     } finally {
       setStarting(false);
+    }
+  }
+
+  function openDelete(test: DiscoveredTest) {
+    setActionError(null);
+    setDeleteTarget(test);
+  }
+
+  function openRename(test: DiscoveredTest) {
+    setActionError(null);
+    setRenameInput(basename(test.file));
+    setRenameTarget(test);
+  }
+
+  function closeModals() {
+    if (actionPending) return;
+    setDeleteTarget(null);
+    setRenameTarget(null);
+    setActionError(null);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setActionPending(true);
+    setActionError(null);
+    try {
+      await deleteTest(deleteTarget.file);
+      // Optimistic update — drop every spec that points at this file.
+      setTests((prev) => prev.filter((t) => t.file !== deleteTarget.file));
+      setDeleteTarget(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  async function confirmRename() {
+    if (!renameTarget) return;
+    const trimmed = renameInput.trim();
+    if (!trimmed || trimmed === basename(renameTarget.file)) {
+      setRenameTarget(null);
+      return;
+    }
+    setActionPending(true);
+    setActionError(null);
+    try {
+      const result = await renameTest(renameTarget.file, trimmed);
+      // Optimistic update — the discovered title doesn't change but the file does.
+      const newFile = result.file;
+      setTests((prev) => prev.map((t) => (t.file === renameTarget.file ? { ...t, file: newFile } : t)));
+      setRenameTarget(null);
+      // Re-discover in the background so Playwright's view stays in sync (titles, tags).
+      loadTests({ v: false });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActionPending(false);
     }
   }
 
@@ -203,9 +275,29 @@ export function Dashboard() {
             const filePath = first.file.split('/').slice(-2).join('/');
 
             return (
-              <div key={title} className="card-hover p-5 space-y-4 cursor-default group">
+              <div key={title} className="card-hover p-5 space-y-4 cursor-default group relative">
+                {/* Action buttons — fade in on card hover */}
+                <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  <button
+                    onClick={() => openRename(first)}
+                    title="Rename test file"
+                    aria-label="Rename test"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-brand-300 hover:bg-brand-500/15 hover:scale-110 active:scale-95 transition-all duration-150"
+                  >
+                    <span className="text-sm">✎</span>
+                  </button>
+                  <button
+                    onClick={() => openDelete(first)}
+                    title="Delete test file"
+                    aria-label="Delete test"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-300 hover:bg-rose-500/15 hover:scale-110 active:scale-95 transition-all duration-150"
+                  >
+                    <span className="text-sm">🗑</span>
+                  </button>
+                </div>
+
                 {/* Card header */}
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-between gap-2 pr-20">
                   <div className="flex items-start gap-2.5 min-w-0">
                     <span className="mt-0.5 shrink-0 text-base">
                       {isAI ? '✦' : '◦'}
@@ -232,7 +324,7 @@ export function Dashboard() {
                       </span>
                     ))}
                   </div>
-                  <span className="text-[11px] text-slate-600 font-mono truncate max-w-[120px]" title={filePath}>
+                  <span className="text-[11px] text-slate-600 font-mono truncate max-w-[120px]" title={first.file}>
                     {filePath}
                   </span>
                 </div>
@@ -241,6 +333,103 @@ export function Dashboard() {
           })}
         </div>
       )}
+
+      {/* Delete confirmation modal */}
+      <Modal
+        open={deleteTarget !== null}
+        onClose={closeModals}
+        title={<span className="flex items-center gap-2"><span>🗑</span>Delete test?</span>}
+      >
+        {deleteTarget && (
+          <>
+            <div className="space-y-3">
+              <p className="text-sm text-slate-300">
+                This will permanently delete the test file and any associated visual-regression snapshots from disk.
+              </p>
+              <div className="card p-3 space-y-1">
+                <div className="text-xs font-semibold text-slate-400">{deleteTarget.title}</div>
+                <code className="block text-xs font-mono text-rose-300/90 break-all">
+                  {deleteTarget.file}
+                </code>
+              </div>
+              {actionError && (
+                <div className="rounded-lg border border-rose-700/50 bg-rose-950/30 text-rose-300 text-xs p-3">
+                  {actionError}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button onClick={closeModals} disabled={actionPending} className="btn-ghost text-sm">
+                Cancel
+              </button>
+              <button onClick={confirmDelete} disabled={actionPending} className="btn-danger">
+                {actionPending ? (
+                  <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />Deleting…</>
+                ) : 'Delete permanently'}
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* Rename modal */}
+      <Modal
+        open={renameTarget !== null}
+        onClose={closeModals}
+        title={<span className="flex items-center gap-2"><span>✎</span>Rename test file</span>}
+      >
+        {renameTarget && (
+          <form
+            onSubmit={(e) => { e.preventDefault(); void confirmRename(); }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
+                New filename
+              </label>
+              <input
+                autoFocus
+                type="text"
+                value={renameInput}
+                onChange={(e) => setRenameInput(e.target.value)}
+                placeholder="login.smoke.ts"
+                className="input-mono text-sm"
+              />
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Must end with one of: <code className="text-brand-300">.smoke.ts</code>,{' '}
+                <code className="text-brand-300">.regression.ts</code>,{' '}
+                <code className="text-brand-300">.visual.ts</code>,{' '}
+                <code className="text-brand-300">.api.ts</code>,{' '}
+                <code className="text-brand-300">.spec.ts</code>,{' '}
+                <code className="text-brand-300">.test.ts</code>,{' '}
+                <code className="text-brand-300">.ai-generated.ts</code>.
+              </p>
+              <div className="text-[11px] text-slate-600 font-mono break-all">
+                current: {renameTarget.file}
+              </div>
+            </div>
+            {actionError && (
+              <div className="rounded-lg border border-rose-700/50 bg-rose-950/30 text-rose-300 text-xs p-3">
+                {actionError}
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" onClick={closeModals} disabled={actionPending} className="btn-ghost text-sm">
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={actionPending || !renameInput.trim()}
+                className="btn-primary"
+              >
+                {actionPending ? (
+                  <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />Renaming…</>
+                ) : 'Rename'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </section>
   );
 }
