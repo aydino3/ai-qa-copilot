@@ -7,24 +7,35 @@ export interface LogEvent {
   ts: number;
 }
 
+export interface StepEvent {
+  action: 'start' | 'end';
+  title: string;
+  status?: 'passed' | 'failed';
+  error?: string | null;
+  ts: number;
+}
+
 export interface RunStream {
   logs: LogEvent[];
+  stepEvents: StepEvent[];
   status: RunStatus | null;
   exitCode: number | null;
   socketState: 'connecting' | 'open' | 'closed' | 'error';
 }
 
 interface ServerMessage {
-  type: 'log' | 'status' | 'error';
+  type: 'log' | 'status' | 'step' | 'error';
   stream?: 'stdout' | 'stderr';
   data?: string;
   status?: RunStatus;
   exitCode?: number | null;
+  payload?: StepEvent;
   ts?: number;
 }
 
 export function useRunStream(runId: string | undefined): RunStream {
   const [logs, setLogs] = useState<LogEvent[]>([]);
+  const [stepEvents, setStepEvents] = useState<StepEvent[]>([]);
   const [status, setStatus] = useState<RunStatus | null>(null);
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [socketState, setSocketState] = useState<RunStream['socketState']>('connecting');
@@ -33,6 +44,7 @@ export function useRunStream(runId: string | undefined): RunStream {
   useEffect(() => {
     if (!runId) return;
     setLogs([]);
+    setStepEvents([]);
     setStatus(null);
     setExitCode(null);
     setSocketState('connecting');
@@ -48,22 +60,20 @@ export function useRunStream(runId: string | undefined): RunStream {
       let msg: ServerMessage;
       try {
         msg = JSON.parse(typeof ev.data === 'string' ? ev.data : '') as ServerMessage;
-      } catch {
-        return;
-      }
+      } catch { return; }
+
       if (msg.type === 'log' && msg.data && msg.stream && typeof msg.ts === 'number') {
         setLogs((prev) => [...prev, { stream: msg.stream!, data: msg.data!, ts: msg.ts! }]);
+      } else if (msg.type === 'step' && msg.payload) {
+        setStepEvents((prev) => [...prev, msg.payload!]);
       } else if (msg.type === 'status' && msg.status) {
         setStatus(msg.status);
         setExitCode(msg.exitCode ?? null);
       }
     };
 
-    return () => {
-      ws.close();
-      wsRef.current = null;
-    };
+    return () => { ws.close(); wsRef.current = null; };
   }, [runId]);
 
-  return { logs, status, exitCode, socketState };
+  return { logs, stepEvents, status, exitCode, socketState };
 }

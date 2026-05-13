@@ -21,6 +21,7 @@ export default defineConfig({
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['json', { outputFile: 'test-results/results.json' }],
     ['./src/reporters/ai-enhanced.reporter.ts'],
+    ['./src/reporters/step-stream.reporter.ts'],
   ],
 
   use: {

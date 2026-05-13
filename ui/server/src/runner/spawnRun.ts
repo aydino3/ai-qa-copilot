@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { FRAMEWORK_ROOT, RESULTS_JSON_PATH } from '../config.js';
-import { runRegistry } from './runRegistry.js';
+import { runRegistry, type StepPayload } from './runRegistry.js';
 
 export interface RunOptions {
   grep?: string;
@@ -16,6 +16,7 @@ export interface StartedRun {
   pid: number | undefined;
 }
 
+const STEP_PREFIX = '__UI_STEP__:';
 const activeChildren = new Map<string, ChildProcess>();
 
 export function startRun(options: RunOptions): StartedRun {
@@ -30,13 +31,35 @@ export function startRun(options: RunOptions): StartedRun {
   });
   activeChildren.set(id, child);
 
+  // Maintain a partial-line buffer so step markers that arrive mid-chunk are
+  // still detected reliably without splitting them across two log events.
+  let stdoutBuffer = '';
+
   child.stdout.on('data', (chunk: Buffer) => {
-    runRegistry.appendLog(id, {
-      stream: 'stdout',
-      data: chunk.toString('utf8'),
-      ts: Date.now(),
-    });
+    stdoutBuffer += chunk.toString('utf8');
+    const lines = stdoutBuffer.split('\n');
+    // The last element is either empty (complete final \n) or an incomplete line.
+    stdoutBuffer = lines.pop() ?? '';
+
+    let normalOutput = '';
+    for (const line of lines) {
+      if (line.startsWith(STEP_PREFIX)) {
+        try {
+          const payload = JSON.parse(line.slice(STEP_PREFIX.length)) as StepPayload;
+          runRegistry.appendStep(id, payload);
+        } catch {
+          // Malformed marker — treat as a normal log line.
+          normalOutput += line + '\n';
+        }
+      } else {
+        normalOutput += line + '\n';
+      }
+    }
+    if (normalOutput) {
+      runRegistry.appendLog(id, { stream: 'stdout', data: normalOutput, ts: Date.now() });
+    }
   });
+
   child.stderr.on('data', (chunk: Buffer) => {
     runRegistry.appendLog(id, {
       stream: 'stderr',
@@ -47,15 +70,20 @@ export function startRun(options: RunOptions): StartedRun {
 
   child.on('error', (err) => {
     activeChildren.delete(id);
-    runRegistry.finalize(id, {
-      status: 'error',
-      exitCode: null,
-      errorMessage: err.message,
-    });
+    // Flush any remaining buffered stdout as a log chunk.
+    if (stdoutBuffer) {
+      runRegistry.appendLog(id, { stream: 'stdout', data: stdoutBuffer, ts: Date.now() });
+      stdoutBuffer = '';
+    }
+    runRegistry.finalize(id, { status: 'error', exitCode: null, errorMessage: err.message });
   });
 
   child.on('close', async (code) => {
     activeChildren.delete(id);
+    if (stdoutBuffer) {
+      runRegistry.appendLog(id, { stream: 'stdout', data: stdoutBuffer, ts: Date.now() });
+      stdoutBuffer = '';
+    }
     const results = await readResultsJson();
     runRegistry.finalize(id, {
       status: code === 0 ? 'completed' : 'failed',

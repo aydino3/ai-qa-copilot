@@ -193,6 +193,17 @@ Each step ends with: typecheck/build, `claude.md` update, ask for approval befor
 - **2026-05-12** — Step 4 complete: `ui/web` scaffold (Vite + React + TS), Tailwind configured, React Router with Dashboard + RunDetails routes, `/api` + `/ws` proxied to `:4000`. `npm run build` clean.
 - **2026-05-12** — Step 5 complete: typed API client, `useRunStream` WS hook, `<Terminal>` component, Dashboard (test list + project/grep filters + Run), RunDetails (live logs, status badge, exit code, cancel). Build clean.
 - **2026-05-12** — **Step 6 complete: project finished.** Loading states + skeletons + empty-state guidance, `concurrently`-powered `npm run dev:ui`, `ui/README.md`, and all-workspace typechecks + builds clean. The GUI is end-to-end functional on top of the unmodified framework.
+- **2026-05-13** — Phase 4 (Business-Readable Manager View):
+  - **`src/reporters/step-stream.reporter.ts`**: new Playwright reporter that hooks `onStepBegin`/`onStepEnd` for `category === 'test'` steps only, emitting `__UI_STEP__:{"action":"start"|"end","title","status","error","ts"}` to stdout. Registered as 5th reporter in `playwright.config.ts`.
+  - **Spawn pipeline** (`spawnRun.ts`): line-buffers stdout, splits on `\n`, routes `__UI_STEP__:` lines to `runRegistry.appendStep()` and normal lines to `appendLog()`. Flushes partial buffer on child exit/error.
+  - **RunRegistry**: added `steps: StepPayload[]` buffer (max 2000), `appendStep()`, and `step` event emission. `list()` now also omits `steps` from summaries.
+  - **logSocket**: subscribes to `step` events and broadcasts `{type:'step', payload, ts}`. History replay now interleaves logs and steps sorted by `ts` so late-connecting clients get a coherent timeline.
+  - **`useRunStream`**: extended with `stepEvents: StepEvent[]` state; handles `type:'step'` messages.
+  - **`<ManagerTimeline>`**: converts raw `StepEvent[]` into resolved `TimelineStep[]` (start/end matched by title), renders a live checklist — spinning indicator for the active step, ✓ green for passed, ✗ rose for failed — with per-step duration and inline error message.
+  - **RunDetails**: segmented `📋 Manager view` / `💻 Developer view` toggle; Manager view is the default. Panel sits in a shared bordered card.
+  - **AI generator**: tightened system prompt to mandate that ALL test logic lives inside `test.step('Human-readable sentence', ...)` blocks; violation is called out explicitly as breaking the Manager View.
+  - Typecheck and build clean (44 frontend modules).
+
 - **2026-05-13** — Phase 3 (Portfolio readiness + Run History + Visual Regression):
   - **Framework cleanup**: removed `tests/auth.setup.ts`, `tests/smoke/auth.smoke.ts`, and `.auth/`. `playwright.config.ts` no longer defines the `setup` project — browser projects have no `dependencies`. `testMatch` extended with `ai-generated` so files like `*.ai-generated.ts` are discovered.
   - **Run History**: `RunRegistry.list()` returns log-stripped summaries sorted newest-first; `GET /api/runs` exposes them. New `/history` page polls every 4s, renders a status-icon table (✓/✗/⟳/⚠), formatted duration + timestamp, clickable rows that navigate to `/runs/:id`. "📜 No runs yet" empty state.

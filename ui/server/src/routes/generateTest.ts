@@ -12,14 +12,14 @@ const API_KEY = process.env.ANTHROPIC_API_KEY;
 
 const BASE_SYSTEM_PROMPT = `You are an expert Playwright test engineer. Given a target URL/feature and natural language test steps, generate a single, complete, production-ready Playwright TypeScript test file.
 
-Rules:
+Rules (ALL are mandatory — violation will break the Manager View):
 - Import { test, expect } from '@playwright/test'
 - Use one test() block with a descriptive title and { tag: '@ai-generated' }
-- Use test.step() for each logical step
-- Use Playwright-native locators: getByRole, getByLabel, getByPlaceholder, getByText
-- Never use page.waitForTimeout()
-- Always await expect(page).toHaveURL(...) after navigation
-- Output ONLY the TypeScript file contents — no markdown fences, no explanation`;
+- EVERY discrete action MUST be wrapped in its own await test.step('Human-readable sentence', async () => { ... }) block. No test logic may live outside a test.step. Use plain English for step titles (e.g. "Navigate to login page", "Fill in email and password", "Verify dashboard is visible").
+- Use Playwright-native locators exclusively: getByRole, getByLabel, getByPlaceholder, getByText, getByTestId
+- Never use page.waitForTimeout() — use expect(locator).toBeVisible() or waitFor() instead
+- Always await expect(page).toHaveURL(...) after navigation — inside its own test.step
+- Output ONLY the TypeScript file contents — no markdown fences, no preamble, no explanation`;
 
 const VISUAL_REGRESSION_PROMPT_ADDENDUM = `
 

@@ -8,6 +8,14 @@ export interface LogChunk {
   ts: number;
 }
 
+export interface StepPayload {
+  action: 'start' | 'end';
+  title: string;
+  status?: 'passed' | 'failed';
+  error?: string | null;
+  ts: number;
+}
+
 export interface RunRecord {
   id: string;
   status: RunStatus;
@@ -16,16 +24,13 @@ export interface RunRecord {
   endedAt: number | null;
   args: string[];
   logs: LogChunk[];
+  steps: StepPayload[];
   results: unknown | null;
   errorMessage: string | null;
 }
 
-export interface RunEvents {
-  log: (chunk: LogChunk) => void;
-  status: (record: RunRecord) => void;
-}
-
 const MAX_LOG_CHUNKS = 5000;
+const MAX_STEP_EVENTS = 2000;
 
 class RunRegistry extends EventEmitter {
   private runs = new Map<string, RunRecord>();
@@ -43,32 +48,23 @@ class RunRegistry extends EventEmitter {
     return this.runs.get(id) ?? null;
   }
 
-  list(): Omit<RunRecord, 'logs'>[] {
-    const out: Omit<RunRecord, 'logs'>[] = [];
+  list(): Omit<RunRecord, 'logs' | 'steps'>[] {
+    const out: Omit<RunRecord, 'logs' | 'steps'>[] = [];
     for (const record of this.runs.values()) {
-      const { logs: _logs, ...summary } = record;
-      void _logs;
+      const { logs: _logs, steps: _steps, ...summary } = record;
+      void _logs; void _steps;
       out.push(summary);
     }
-    // Newest first.
     out.sort((a, b) => b.startedAt - a.startedAt);
     return out;
   }
 
   create(id: string, args: string[]): RunRecord {
-    if (this.activeId) {
-      throw new Error('A run is already active');
-    }
+    if (this.activeId) throw new Error('A run is already active');
     const record: RunRecord = {
-      id,
-      status: 'running',
-      exitCode: null,
-      startedAt: Date.now(),
-      endedAt: null,
-      args,
-      logs: [],
-      results: null,
-      errorMessage: null,
+      id, status: 'running', exitCode: null,
+      startedAt: Date.now(), endedAt: null,
+      args, logs: [], steps: [], results: null, errorMessage: null,
     };
     this.runs.set(id, record);
     this.activeId = id;
@@ -80,11 +76,20 @@ class RunRegistry extends EventEmitter {
     const record = this.runs.get(id);
     if (!record) return;
     record.logs.push(chunk);
-    // Drop oldest chunks if the buffer grows unbounded (long-running suites).
     if (record.logs.length > MAX_LOG_CHUNKS) {
       record.logs.splice(0, record.logs.length - MAX_LOG_CHUNKS);
     }
     this.emit('log', { runId: id, chunk });
+  }
+
+  appendStep(id: string, payload: StepPayload): void {
+    const record = this.runs.get(id);
+    if (!record) return;
+    record.steps.push(payload);
+    if (record.steps.length > MAX_STEP_EVENTS) {
+      record.steps.splice(0, record.steps.length - MAX_STEP_EVENTS);
+    }
+    this.emit('step', { runId: id, payload });
   }
 
   finalize(
