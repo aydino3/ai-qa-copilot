@@ -175,8 +175,15 @@ async function readResultsJson(): Promise<unknown | null> {
 
 const SNAPSHOT_KEYWORDS = ['snapshot', 'actual', 'expected', 'screenshot', 'image', 'differ', 'pixel', 'writing'];
 
+/** Strip ANSI/VT100 escape sequences that Playwright embeds in error messages. */
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[^[\]]/g;
+function stripAnsi(str: string): string {
+  return str.replace(ANSI_RE, '');
+}
+
 function isSnapshotMessage(message: string): boolean {
-  const lower = message.toLowerCase();
+  const lower = stripAnsi(message).toLowerCase();
   return SNAPSHOT_KEYWORDS.some((k) => lower.includes(k));
 }
 

@@ -49,7 +49,7 @@ export function RunReport({ evidence }: { evidence: RunEvidence }) {
       </div>
 
       {selected && (
-        <EvidenceModal test={selected} onClose={() => setSelected(null)} />
+        <EvidenceModal test={selected} baselineRun={evidence.baselineRun} onClose={() => setSelected(null)} />
       )}
     </div>
   );

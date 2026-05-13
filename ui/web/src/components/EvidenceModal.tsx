@@ -47,7 +47,7 @@ function StepRow({ step, depth }: { step: EvidenceStep; depth: number }) {
           className="text-xs text-rose-300/90 font-mono bg-rose-950/30 rounded p-2 my-0.5 whitespace-pre-wrap break-all"
           style={{ marginLeft: `${6 + depth * 20 + 28}px`, marginRight: '8px' }}
         >
-          {step.error}
+          {stripAnsi(step.error)}
         </pre>
       )}
       {open && hasChildren && step.steps.map((child, i) => (
@@ -114,11 +114,19 @@ function ImagePanel({ label, src, highlight }: { label: string; src: string; hig
 
 // ─── Main full-screen overlay ─────────────────────────────────────────────────
 
+// Strip ANSI colour codes Playwright embeds in error messages so they
+// render as plain text in the browser.
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[^[\]]/g;
+function stripAnsi(s: string): string { return s.replace(ANSI_RE, ''); }
+
 export function EvidenceModal({
   test,
+  baselineRun = false,
   onClose,
 }: {
   test: TestEvidence;
+  baselineRun?: boolean;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -190,12 +198,27 @@ export function EvidenceModal({
 
           {/* LEFT — steps + errors */}
           <div className="space-y-8">
-            {hasErrors && (
+            {/* Baseline success banner — replaces errors when this is a baseline-creation run */}
+            {baselineRun && (
+              <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-3">
+                <span className="text-emerald-400 text-xl shrink-0">✓</span>
+                <div>
+                  <div className="text-sm font-semibold text-emerald-300">Baseline Created</div>
+                  <div className="text-xs text-emerald-400/70 mt-0.5">
+                    New snapshot baselines were written. Future runs will compare against these images.
+                    {test.screenshots.length > 0 && ' The captured screenshots are shown in the Media panel.'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Real errors (not shown on baseline runs since they're all patched away) */}
+            {hasErrors && !baselineRun && (
               <Section title="Errors">
                 <div className="space-y-3">
                   {test.errors.map((err, i) => (
                     <pre key={i} className="text-sm text-rose-300 font-mono bg-rose-950/30 border border-rose-700/30 rounded-lg p-4 whitespace-pre-wrap break-all overflow-x-auto">
-                      {err}
+                      {stripAnsi(err)}
                     </pre>
                   ))}
                 </div>
