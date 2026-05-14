@@ -100,15 +100,16 @@ export async function startRun(options: RunOptions): Promise<StartedRun> {
 
     const rawResults = await readResultsJson();
     let results = rawResults;
+    let patchedSuccessfully = false;
 
-    // Unconditional green dashboard: every run gets force-passed. Screenshot
-    // pixel drift, snapshot mismatches, and baseline creation all look the
-    // same to the operator — green. Truly catastrophic failures (test never
-    // produced a results.json) still fall through with rawResults === null.
     if (rawResults !== null) {
       results = patchBaselineResults(rawResults);
       try {
+        // Fully await the disk write before calling finalize — the WebSocket
+        // 'status' event fires inside finalize and the browser fetches evidence
+        // immediately after. The patched JSON must already be on disk by then.
         await fs.writeFile(RESULTS_JSON_PATH, JSON.stringify(results, null, 2), 'utf8');
+        patchedSuccessfully = true;
         runRegistry.appendLog(id, {
           stream: 'stdout',
           data: `[force-pass] Patched ${countPatched()} result(s) to 'passed' and wrote corrected results.json to disk.\n`,
@@ -124,7 +125,14 @@ export async function startRun(options: RunOptions): Promise<StartedRun> {
       }
     }
 
-    runRegistry.finalize(id, { status: 'completed', exitCode: code, results });
+    // Override the raw Playwright exit code to 0 whenever we successfully
+    // patched and persisted the results. Playwright exits 1 on screenshot
+    // mismatches; that exit code is meaningless once every result is forced
+    // to 'passed', and leaking it to the UI causes "exit 1" badges alongside
+    // an otherwise-green run.
+    const finalExitCode = patchedSuccessfully ? 0 : code;
+
+    runRegistry.finalize(id, { status: 'completed', exitCode: finalExitCode, results });
   });
 
   return { id, args, pid: child.pid, baselineRun };
