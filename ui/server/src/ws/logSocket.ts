@@ -12,7 +12,7 @@ interface WsMessage {
   ts?: number;
 }
 
-const RUN_WS_PATH = /^\/ws\/runs\/([\w-]+)$/;
+const RUN_WS_PATH = /^\/ws\/runs\/([\w-]+)(?:\?.*)?$/;
 
 export function attachLogSocket(httpServer: HttpServer): void {
   const wss = new WebSocketServer({ noServer: true });
@@ -71,6 +71,14 @@ export function attachLogSocket(httpServer: HttpServer): void {
         return;
       }
 
+      // Parse optional ?after=<ts> cursor — skip events already seen by the client.
+      const afterTs = (() => {
+        const qs = (req.url ?? '').split('?')[1] ?? '';
+        const v = new URLSearchParams(qs).get('after');
+        const n = v ? Number(v) : NaN;
+        return Number.isFinite(n) ? n : 0;
+      })();
+
       // Replay buffered history: interleave logs and steps in arrival order
       // using the ts field so the client sees a coherent timeline.
       type Replayable =
@@ -81,7 +89,7 @@ export function attachLogSocket(httpServer: HttpServer): void {
         ...record.steps.map((s) => ({ kind: 'step' as const, ts: s.ts, payload: s })),
       ];
       events.sort((a, b) => a.ts - b.ts);
-      for (const ev of events) {
+      for (const ev of events.filter((e) => e.ts > afterTs)) {
         if (ev.kind === 'log') {
           ws.send(JSON.stringify({ type: 'log', stream: ev.stream, data: ev.data, ts: ev.ts } satisfies WsMessage));
         } else {

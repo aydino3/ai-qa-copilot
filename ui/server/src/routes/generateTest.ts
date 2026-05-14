@@ -179,6 +179,56 @@ ${visualRegression ? 'Visual regression: ENABLED — use toHaveScreenshot() as d
   return stripMarkdownFences(text);
 }
 
+/**
+ * Infers a plausible Playwright action stub from a natural-language step.
+ * Handles the most common patterns: fill, click, navigate, verify/assert.
+ * Falls back to a waitForLoadState stub when the intent is unclear.
+ */
+function inferStepBody(step: string): string {
+  const s = step.toLowerCase();
+
+  // Navigate / go to
+  if (/\b(go to|navigate to|open|visit)\b/.test(s)) {
+    const urlMatch = step.match(/https?:\/\/\S+/);
+    const pathMatch = step.match(/['"]([^'"]+)['"]/);
+    const target = urlMatch?.[0] ?? pathMatch?.[1] ?? 'process.env.BASE_URL ?? \'/\'';
+    const quoted = urlMatch ? JSON.stringify(urlMatch[0]) : (pathMatch ? JSON.stringify(pathMatch[1]) : "process.env.BASE_URL ?? '/'");
+    void target;
+    return `    await page.goto(${quoted});\n    await expect(page).toHaveURL(${quoted});`;
+  }
+
+  // Fill / type / enter
+  if (/\b(fill|type|enter|input)\b/.test(s)) {
+    const labelMatch = step.match(/\b(?:the\s+)?["']?([A-Z][a-zA-Z ]{1,30})["']?\s+(?:field|input|box)/i);
+    const valueMatch = step.match(/(?:with|value)\s+["']?([^"'\n]+)["']?/i);
+    const label = labelMatch?.[1] ?? 'Field label';
+    const value = valueMatch?.[1]?.trim() ?? 'value';
+    return `    await page.getByLabel(${JSON.stringify(label)}).fill(${JSON.stringify(value)});`;
+  }
+
+  // Click / press / tap / select
+  if (/\b(click|press|tap|select|choose)\b/.test(s)) {
+    const nameMatch = step.match(/(?:the\s+)?["']([^"']+)["']\s+(?:button|link|tab|option)/i)
+      ?? step.match(/\b(?:the\s+)?([A-Z][a-zA-Z ]{1,30})\s+(?:button|link|tab|option)/i);
+    const name = nameMatch?.[1] ?? 'Button or link';
+    return `    await page.getByRole('button', { name: ${JSON.stringify(name)} }).click();`;
+  }
+
+  // Verify / assert / check / expect / should / see
+  if (/\b(verify|assert|check|expect|should|see|visible|shown)\b/.test(s)) {
+    const textMatch = step.match(/["']([^"']+)['"]/);
+    const urlMatch = step.match(/url\s+(?:contains?|is)\s+["']?(\S+)["']?/i);
+    if (urlMatch?.[1]) {
+      return `    await expect(page).toHaveURL(/${urlMatch[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/);`;
+    }
+    const text = textMatch?.[1] ?? 'Expected text';
+    return `    await expect(page.getByText(${JSON.stringify(text)})).toBeVisible();`;
+  }
+
+  // Default stub
+  return `    await page.waitForLoadState('domcontentloaded');`;
+}
+
 function generateMock(
   targetUrl: string,
   steps: string,
@@ -199,7 +249,8 @@ function generateMock(
 
   const stepBlocks = parsedSteps.map((step) => {
     const snapshot = visualRegression ? `\n    await expect(page).toHaveScreenshot();` : '';
-    return `  await test.step(${toBacktick(step)}, async () => {\n    // TODO: implement\n    await page.waitForLoadState('domcontentloaded');${snapshot}\n  });`;
+    const body = inferStepBody(step);
+    return `  await test.step(${toBacktick(step)}, async () => {\n${body}${snapshot}\n  });`;
   }).join('\n\n');
 
   const finalSnapshot = visualRegression
