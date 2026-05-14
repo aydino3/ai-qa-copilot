@@ -1,231 +1,178 @@
-# AI QA Copilot — GUI Project Memory
+# AI QA Copilot — Autonomous Engineering Manual
 
-This file is the central context document for adding a web-based GUI to the existing Playwright + TypeScript QA framework. Update it after every major step so context survives across sessions.
+## Purpose
 
----
-
-## 1. Existing framework (do not modify unless required)
-
-- **Stack:** Playwright 1.44 + TypeScript 5.4, strict mode, path aliases (`@pages/*`, `@fixtures/*`, `@utils/*`, `@ai/*`, `@test-data/*`)
-- **Test layout:** `tests/{smoke,regression,visual,api}/*.{smoke,regression,visual,api}.ts` + `tests/auth.setup.ts`
-- **Projects:** `setup` (auth state), `chromium`, `firefox`, `mobile-safari`, `api`
-- **Reporters:** `list`, `html` (→ `playwright-report/`), `json` (→ `test-results/results.json`), custom `ai-enhanced.reporter.ts`
-- **Scripts:** `test`, `test:smoke`, `test:regression`, `test:visual`, `test:api`, `test:ci`, `report`, `lint`, `typecheck`
-- **Env:** `requireEnv()` fail-fast at module load; AI features gated by `AI_ENABLED` + `ANTHROPIC_API_KEY`
-
-The GUI must NOT modify framework behavior. Tests must remain runnable from CLI exactly as today.
+This file governs autonomous operation of the AI QA Copilot engineering organization. Read this before every session.
 
 ---
 
-## 2. GUI goals
+## Autonomous Engineering Behavior
 
-1. List available tests (parsed from Playwright's `--list --reporter=json`)
-2. Trigger runs (full suite, by tag, by file, by project) from the browser
-3. Stream live Playwright stdout/stderr to the browser via WebSocket
-4. Show structured results when a run finishes (parsed from `test-results/results.json`)
-5. Link to the existing HTML report (`playwright-report/index.html`)
-
-Non-goals (for now): authentication, multi-user, run history persistence, scheduling, container orchestration.
+- Act immediately. Never wait for user direction on engineering decisions.
+- Read all memory files first, every session.
+- Discover highest-impact work from `active_tasks.md` and `tech_debt.md`.
+- Execute, validate, commit, push — in that order.
+- Update memory files before stopping.
+- Recursive improvement: after each fix, re-evaluate for newly unlocked work.
 
 ---
 
-## 3. Architecture
+## Repository Layout
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Browser (React + Vite + Tailwind, port 5173)       │
-│  ├── Test list view                                 │
-│  ├── Run controls (tags, projects, file filter)     │
-│  ├── Live log terminal (xterm.js or <pre> stream)   │
-│  └── Results panel + HTML report link               │
-└──────────────┬──────────────────────────────────────┘
-               │ HTTP (REST) + WebSocket (logs)
-               ▼
-┌─────────────────────────────────────────────────────┐
-│  Backend (Node + Express + ws, port 4000)           │
-│  ├── GET  /api/tests          list discovered tests │
-│  ├── POST /api/runs           start a Playwright run│
-│  ├── GET  /api/runs/:id       run status + results  │
-│  ├── GET  /api/runs/:id/report  serve HTML report   │
-│  └── WS   /ws/runs/:id        stream stdout/stderr  │
-│                                                     │
-│  Spawns: `npx playwright test ...` via child_process│
-│  CWD:    repo root (reuses existing config/env)     │
-└─────────────────────────────────────────────────────┘
-```
-
-**Key decisions:**
-
-- **Monorepo layout** under `ui/` — keeps framework root clean. Two sub-packages: `ui/server` and `ui/web`. No workspace tooling (npm workspaces) unless it becomes necessary; each sub-package has its own `package.json`.
-- **Process model:** backend spawns `npx playwright test ...` as a child process with the repo root as CWD. Inherits `.env`. One in-flight run per `runId`; runs are tracked in an in-memory `Map<runId, RunState>`. No DB.
-- **Log streaming:** native `ws` (not Socket.io) — smaller surface area, no client lib needed beyond browser `WebSocket`. Each WS connection is bound to a `runId` and replays a small buffered history on connect.
-- **Results:** parsed from `test-results/results.json` once the child exits. Backend caches per `runId`.
-- **HTML report:** Express static-serves `playwright-report/` on `/api/runs/:id/report` (proxied through Vite in dev).
-- **Frontend dev server:** Vite with `/api` + `/ws` proxy to backend.
-
----
-
-## 4. File structure (target)
-
-```
-ui/
-├── server/
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── src/
-│   │   ├── index.ts            # Express + ws bootstrap
-│   │   ├── routes/
-│   │   │   ├── tests.ts        # GET /api/tests
-│   │   │   └── runs.ts         # POST /api/runs, GET /api/runs/:id
-│   │   ├── runner/
-│   │   │   ├── spawnRun.ts     # child_process.spawn wrapper
-│   │   │   └── runRegistry.ts  # in-memory run state + log buffer
-│   │   ├── ws/
-│   │   │   └── logSocket.ts    # ws server, runId routing
-│   │   └── utils/
-│   │       └── playwright.ts   # list tests, parse results.json
-│   └── .env.example
-└── web/
-    ├── package.json
-    ├── vite.config.ts
-    ├── tailwind.config.js
-    ├── postcss.config.js
-    ├── index.html
-    ├── tsconfig.json
-    └── src/
-        ├── main.tsx
-        ├── App.tsx
-        ├── api/
-        │   ├── client.ts
-        │   └── socket.ts
-        ├── components/
-        │   ├── TestList.tsx
-        │   ├── RunControls.tsx
-        │   ├── LogStream.tsx
-        │   └── ResultsPanel.tsx
-        └── styles/index.css
+/                          Playwright framework root (TypeScript, strict)
+  playwright.config.ts     Framework config — do NOT break CLI execution
+  src/                     Page objects, fixtures, reporters, utilities
+  tests/                   Test suites by type: smoke/regression/visual/api/ai-generated
+  ui/
+    server/                Express + ws backend (Node ESM, TypeScript)
+      src/
+        config.ts          FRAMEWORK_ROOT, ports, paths
+        index.ts           Server bootstrap
+        routes/            runs, tests, config, generateTest
+        runner/            runRegistry, spawnRun
+        ws/                logSocket (WebSocket streaming)
+        utils/             playwright test discovery
+    web/                   Vite + React 18 + Tailwind 3 frontend
+      src/
+        api/client.ts      Typed REST + evidence fetching
+        hooks/             useRunStream (WS hook)
+        pages/             Dashboard, RunDetails, History, NewTest, Settings
+        components/        Terminal, ManagerTimeline, RunReport, ErrorBoundary, etc.
+        styles/index.css   Design system via Tailwind @layer
+  docs/memory/             Persistent engineering state (update every session)
 ```
 
 ---
 
-## 5. Roadmap
+## Role-Switching Protocol
 
-### Step 1 — Setup & planning (current)
-- Inspect repo, write this `claude.md`. **No code yet.**
+Switch roles automatically based on work type:
 
-### Step 2 — Backend skeleton ✅
-- Scaffolded `ui/server` (Express + TypeScript + native `ws` dep + `tsx` for dev)
-- `GET /api/health` returns `{ ok, frameworkRoot }`
-- `GET /api/tests` shells `npx playwright test --list --reporter=json` from `FRAMEWORK_ROOT` and returns `{ count, tests, errors }`
-- Parser is resilient: non-zero exit + partial JSON is surfaced as `errors[]` instead of failing the request (handles e.g. missing env vars at framework module load)
-- Filters Playwright's synthetic "No tests found" error so it doesn't leak through alongside real load-time errors
-- Verified: `npm run typecheck` clean; live `/api/health` and `/api/tests` smoke-tested against the real framework (5 tests discovered)
+| Trigger | Active Role |
+|---------|-------------|
+| API shape, data model, run lifecycle | Backend Engineer |
+| Component, page, UX flow | Frontend Engineer |
+| Correctness, coverage, reliability | QA Engineer |
+| System topology, decoupling | Architect |
+| User goals, priority | Product Owner |
+| Code smell, duplication, drift | Self-Critique Reviewer |
 
-### Step 3 — Run execution + WebSocket log streaming ✅
-- `POST /api/runs` accepts `{ grep?, project?, file? }`, returns `{ runId, pid, args }`. Returns `409` with `activeRunId` when a run is already active (only one concurrent run permitted).
-- `POST /api/runs/:id/cancel` sends `SIGTERM` to the child.
-- `GET /api/runs/:id` returns the run summary without logs (clients use WS for streaming) including `status`, `exitCode`, `args`, `results` (parsed `test-results/results.json`), and `errorMessage`.
-- `runRegistry` (EventEmitter) holds in-memory run state with a bounded log buffer (5000 chunks max) and emits `log` / `status` events.
-- `ws://localhost:4000/ws/runs/:id` upgrades on the HTTP server, replays buffered history on connect, sends a snapshot status, then streams live `{type:'log', stream, data, ts}` messages. On terminal status (`completed` / `failed` / `error`) the server broadcasts the final status and closes the socket. Connections to unknown `runId` receive `{type:'error', data:'run_not_found'}` and close.
-- Child is spawned with `cwd: FRAMEWORK_ROOT`, inherits `process.env`, uses `npx playwright test ...` with `--reporter=list,json`.
-- Verified end-to-end with a temporary `scripts/test-ws.mjs` harness (since removed): WS streamed live logs, terminal status closed the socket, concurrent POST correctly returned 409.
-
-### Step 4 — Frontend scaffold ✅
-- `ui/web` scaffolded directly (Vite + React 18 + TypeScript) — no interactive `npm create`
-- Tailwind 3 + PostCSS + Autoprefixer configured; `src/styles/index.css` imports the three `@tailwind` layers; `tailwind.config.js` scans `index.html` and `src/**/*.{ts,tsx}`
-- TypeScript split into `tsconfig.app.json` (app) + `tsconfig.node.json` (Vite config) with project-references root `tsconfig.json`
-- `react-router-dom` v6 wired: `BrowserRouter` in `main.tsx`, `<Routes>` in `App.tsx`, two routes:
-  - `/` → `Dashboard` placeholder (test list / run controls)
-  - `/runs/:runId` → `RunDetails` placeholder (WS log stream / results)
-- Header with `NavLink`s using Tailwind classes confirms styling pipeline works
-- Vite proxy: `/api` → `http://localhost:4000`, `/ws` → `ws://localhost:4000` (with `ws: true`)
-- Verified: `npm run build` clean — 36 modules transformed, Tailwind CSS emitted, no TS errors
-
-### Step 5 — Wire frontend to backend ✅
-- `src/api/client.ts` — typed REST helpers (`fetchTests`, `startRun`, `fetchRun`, `cancelRun`) with strict response narrowing; non-2xx responses throw `Error` enriched with `status` + `body`.
-- `src/hooks/useRunStream.ts` — `useRunStream(runId)` opens `ws://<host>/ws/runs/:id` (https→wss aware), narrates `log` events into a `LogEvent[]`, mirrors `status` + `exitCode`, and exposes `socketState` (`connecting`/`open`/`closed`/`error`). Cleans up on unmount or runId change.
-- `src/components/Terminal.tsx` — dark monospace panel; `stderr` chunks coloured rose-400; auto-scrolls to bottom on every new chunk via `useEffect`.
-- **Dashboard** (`/`):
-  - Fetches `/api/tests` on mount, derives unique project + tag lists.
-  - Project dropdown + grep/tag input (datalist suggestions from discovered tags).
-  - "Run tests" button calls `startRun()` then `navigate('/runs/:runId')`.
-  - Renders a discovered-tests table with project, tags, file:line.
-  - Surface discovery `errors[]` as warning banner (e.g. missing env vars) instead of hiding them.
-- **RunDetails** (`/runs/:runId`):
-  - Fetches `/api/runs/:id` on mount for `args`, plus a second fetch after the run terminates to pick up parsed results.
-  - WS-driven status badge (running/completed/failed/error) with exit code chip.
-  - "Cancel run" button hits `POST /api/runs/:id/cancel`; disabled when not running.
-  - Live log stream rendered in `<Terminal>`; socket state shown next to args.
-  - "← Dashboard" link to return.
-- Removed obsolete `/runs/preview` placeholder nav link.
-- Verified: `npm run build` clean (39 modules transformed, no TS errors).
-
-### Step 6 — Polish ✅
-- Added a `<Spinner>` component plus skeleton rows in the Dashboard test table while `/api/tests` resolves
-- RunDetails shows a "Loading run metadata…" spinner while `/api/runs/:id` resolves; replaces metadata bar once loaded
-- Improved Dashboard empty state with guidance pointing at discovery warnings + `.env` at the framework root
-- Network failures already surface as red error banners (loadError + startError + cancelError) — verified
-- Installed `concurrently` at the repo root and added:
-  - `npm run dev:ui` → starts backend + frontend together with prefixed labels (`server`, `web`)
-  - `npm run ui:server`, `npm run ui:web` — individual processes
-  - `npm run build:ui`, `npm run typecheck:ui` — workspace fan-out
-- Added `ui/README.md` documenting architecture, run lifecycle, scripts, configuration, and constraints
-- Final verification: `npm run typecheck` (framework) + `npm run typecheck:ui` (both UI packages) + `npm run build:ui` (both packages) — all clean
-
-Each step ends with: typecheck/build, `claude.md` update, ask for approval before moving on.
+Never announce role switches. Just do the work.
 
 ---
 
-## 6. Conventions
+## Architectural Quality Standards
 
-- **No raw selectors in framework tests** (existing rule — unchanged).
-- **GUI code must not import from framework `src/`** unless strictly necessary. The backend treats Playwright as a CLI subprocess, not a library.
-- **No new framework dependencies** added to root `package.json`. All GUI deps live under `ui/server` and `ui/web`.
-- **Branch:** continue on `claude/design-qa-automation-architecture-W3tXU`. Commit per step.
+- No circular imports between layers (routes → runner → registry; web → api → hooks → components).
+- Backend routes are thin: validation → delegate → respond. No business logic in routes.
+- RunRegistry is the single source of truth for in-flight and historical runs.
+- No shared mutable module state except RunRegistry singleton.
+- FRAMEWORK_ROOT must be a single resolved path from env or relative resolution.
+- WebSocket streaming is one-way: server pushes log/step/status events. Clients are read-only.
+- Evidence is built once and cached (`_evidenceCache`) on terminal status.
+- All `GET /api/runs/:id` responses exclude `logs`, `steps`, `_evidenceCache`, and `results` from the summary — these are large and served via dedicated endpoints.
 
 ---
 
-## 7. Progress log
+## UI/UX Quality Standards
 
-- **2026-05-12** — Step 1 complete: `claude.md` created.
-- **2026-05-12** — Step 2 complete: backend skeleton with `/api/health` and `/api/tests` working against the live framework.
-- **2026-05-12** — Step 3 complete: `POST /api/runs` spawns Playwright, `runRegistry` tracks state, `ws://…/ws/runs/:id` streams logs and terminal status.
-- **2026-05-12** — Step 4 complete: `ui/web` scaffold (Vite + React + TS), Tailwind configured, React Router with Dashboard + RunDetails routes, `/api` + `/ws` proxied to `:4000`. `npm run build` clean.
-- **2026-05-12** — Step 5 complete: typed API client, `useRunStream` WS hook, `<Terminal>` component, Dashboard (test list + project/grep filters + Run), RunDetails (live logs, status badge, exit code, cancel). Build clean.
-- **2026-05-12** — **Step 6 complete: project finished.** Loading states + skeletons + empty-state guidance, `concurrently`-powered `npm run dev:ui`, `ui/README.md`, and all-workspace typechecks + builds clean. The GUI is end-to-end functional on top of the unmodified framework.
-- **2026-05-13** — Phase 4 (Business-Readable Manager View):
-  - **`src/reporters/step-stream.reporter.ts`**: new Playwright reporter that hooks `onStepBegin`/`onStepEnd` for `category === 'test'` steps only, emitting `__UI_STEP__:{"action":"start"|"end","title","status","error","ts"}` to stdout. Registered as 5th reporter in `playwright.config.ts`.
-  - **Spawn pipeline** (`spawnRun.ts`): line-buffers stdout, splits on `\n`, routes `__UI_STEP__:` lines to `runRegistry.appendStep()` and normal lines to `appendLog()`. Flushes partial buffer on child exit/error.
-  - **RunRegistry**: added `steps: StepPayload[]` buffer (max 2000), `appendStep()`, and `step` event emission. `list()` now also omits `steps` from summaries.
-  - **logSocket**: subscribes to `step` events and broadcasts `{type:'step', payload, ts}`. History replay now interleaves logs and steps sorted by `ts` so late-connecting clients get a coherent timeline.
-  - **`useRunStream`**: extended with `stepEvents: StepEvent[]` state; handles `type:'step'` messages.
-  - **`<ManagerTimeline>`**: converts raw `StepEvent[]` into resolved `TimelineStep[]` (start/end matched by title), renders a live checklist — spinning indicator for the active step, ✓ green for passed, ✗ rose for failed — with per-step duration and inline error message.
-  - **RunDetails**: segmented `📋 Manager view` / `💻 Developer view` toggle; Manager view is the default. Panel sits in a shared bordered card.
-  - **AI generator**: tightened system prompt to mandate that ALL test logic lives inside `test.step('Human-readable sentence', ...)` blocks; violation is called out explicitly as breaking the Manager View.
-  - Typecheck and build clean (44 frontend modules).
+**Design system** (Tailwind tokens — do not invent ad hoc values):
+- Surfaces: `bg-surface`, `bg-surface-1` … `bg-surface-5`
+- Brand: `brand-300` (text), `brand-500` (interactive), `gradient-brand` (CTA)
+- Card: `.card`, `.card-hover` — never raw `bg-` for elevated surfaces
+- Buttons: `.btn-primary`, `.btn-ghost`, `.btn-danger` — never ad hoc button styles
+- Inputs: `.input`, `.input-mono` — never raw `<input className="border …">`
+- Tags: `<TagChip tag={t} />` — never inline tag rendering
 
-- **2026-05-13** — Phase 3 (Portfolio readiness + Run History + Visual Regression):
-  - **Framework cleanup**: removed `tests/auth.setup.ts`, `tests/smoke/auth.smoke.ts`, and `.auth/`. `playwright.config.ts` no longer defines the `setup` project — browser projects have no `dependencies`. `testMatch` extended with `ai-generated` so files like `*.ai-generated.ts` are discovered.
-  - **Run History**: `RunRegistry.list()` returns log-stripped summaries sorted newest-first; `GET /api/runs` exposes them. New `/history` page polls every 4s, renders a status-icon table (✓/✗/⟳/⚠), formatted duration + timestamp, clickable rows that navigate to `/runs/:id`. "📜 No runs yet" empty state.
-  - **Visual Regression**: `POST /api/generate-test` accepts `visualRegression: boolean`. When true, the system prompt is extended with explicit instructions to add `await expect(page).toHaveScreenshot()` calls and tag the test `@visual`. Mock template mirrors the same behaviour. New checkbox in the New Test form + purple `📸 visual` badge in the result preview.
-  - **Nav**: added `⌛ History` tab between New test and Settings.
-  - Typecheck and build clean across both workspaces (43 frontend modules).
+**UX invariants:**
+- Every async operation has: loading state → success state → error state.
+- Empty states have a human message + next-action guidance.
+- Errors surface as red banners, never silent console.error.
+- Destructive actions (delete, cancel run) require confirmation or clear affordance.
+- Navigation: sticky header, active-tab highlight, badge on History when run is active.
+- No layout shift during loading (use skeleton rows, not spinners that change height).
 
-- **2026-05-13** — SaaS feature iteration: Environment Config Panel, AI Test Builder, and Dashboard polish.
-  - Backend: `GET/POST /api/config` reads/writes `.env` safely (redacts `ANTHROPIC_API_KEY`, validates key format); `POST /api/generate-test` calls Claude `claude-sonnet-4-6` when `AI_ENABLED=true`+`ANTHROPIC_API_KEY` set, else returns a mock template. Generated files land in `tests/ai-generated/`.
-  - Frontend: **Settings** page (env vars form with password reveal, primary/other sections, save feedback); **New Test** (AI Builder) page (URL + step textarea, inline code preview, "Go to Dashboard →" triggers auto-refresh); **Dashboard** polished with BASE_URL pill, project icons, tag colour chips, hover rows, spinner-in-button; sticky header with ◈ logo and three nav tabs.
-  - All workspaces typecheck and build clean (42 frontend modules).
+---
 
-- **2026-05-13** — Phase 5 (Generator fix + full UI/UX revamp):
-  - **Generator fix**: `generateMock()` in `ui/server/src/routes/generateTest.ts` completely rewritten — `targetUrl` is now the human-readable test title (strips `https://` prefix), each newline-delimited step from `steps` textarea becomes a real `test.step('user text', async () => {...})` block. Previously generated boilerplate that ignored user inputs entirely.
-  - **Tags support**: Added `tags?: string` field to `GenerateTestOptions` and `POST /api/generate-test`. `parseTags()` normalises comma/space-delimited input; tags merged with `@ai-generated` and `@visual` in both AI and mock paths. Tags field added to New Test form with preset toggles (@smoke, @regression, @visual) and free-form input.
-  - **Tailwind design system revamp** (`tailwind.config.js` + `src/styles/index.css`): `brand` palette (indigo/purple), `surface` palette (`#0d0d14` base), gradient utilities (`bg-gradient-brand`, `bg-gradient-card`), glow box shadows, `slide-up`/`fade-in` animations. Utility classes: `.btn-primary`, `.btn-ghost`, `.btn-danger`, `.card`, `.card-hover`, `.input`, `.input-mono`, `.tag-chip` variants, `.text-gradient`.
-  - **App.tsx revamp**: dark sticky header `bg-surface-1/80 backdrop-blur-xl`, gradient logo badge with glow, brand-coloured active nav tabs.
-  - **Dashboard revamp**: test cards grid (2-col / 3-col), `.card-hover` animations, BASE_URL pill, filter bar, `<TagChip>` component.
-  - **NewTest revamp**: preset tag toggle chips with active rings, `.card`/`.input`/`.btn-primary` throughout, code preview block.
-  - **Settings revamp**: `.card` fieldset wrappers, `.input-mono` fields, `.btn-primary` save button, brand-coloured key labels.
-  - **History revamp**: `.card` table with `bg-surface-3` header, brand-coloured status pills (rounded-full), brand-coloured links, exit code coloured green/red.
-  - **RunDetails revamp**: gradient brand logo badge, `.btn-danger` cancel, `.btn-ghost` back link, gradient active toggle on view switcher, improved socket-state display.
-  - **`<TagChip>`** new component: maps tag prefixes to correct CSS class (smoke/regression/visual/ai/default).
-  - **`<Spinner>`**, **`<Terminal>`**, **`<ManagerTimeline>`** updated to use brand colour tokens.
-  - Typecheck and build clean (45 frontend modules).
+## QA Expectations
+
+- `npm run typecheck:ui` must be clean before every commit.
+- `npm run build:ui` must be clean before every commit.
+- `npm run typecheck` (framework) must be clean before every commit.
+- After any backend change, mentally trace: spawn → registry → WS → frontend.
+- After any frontend change, trace: mount → fetch → state → render → error path.
+- Prefer concrete assertions over "looks fine".
+
+---
+
+## Refactoring Philosophy
+
+- Prefer editing existing systems. Never create a parallel implementation.
+- Delete dead code immediately — it accumulates cognitive debt.
+- Extract only when duplication exceeds 3 instances or abstraction has a clear name.
+- Inline when an abstraction is used once and adds no clarity.
+- No backwards-compat shims. Change the callers.
+- Tech debt has IDs (TD-xx) — always cross-reference with `tech_debt.md`.
+
+---
+
+## Self-Critique Behavior
+
+After implementing any change, ask:
+1. Is the response shape of every API endpoint documented and correct?
+2. Does the frontend handle all three states (loading/success/error) for this endpoint?
+3. Is there any leaked internal field in API responses?
+4. Is there any debug console.log in production code?
+5. Is there any hardcoded value that should be an env var or config?
+6. Does any new component duplicate logic already in an existing component?
+7. Is the new code exercisable without a live Playwright run?
+
+---
+
+## Simplicity & Cohesion
+
+- One pattern per concern. History uses `runs.jsonl`; evidence uses `_evidenceCache`. Don't add a second cache layer.
+- Co-locate related types: `RunRecord`, `LogChunk`, `StepPayload` live in `runRegistry.ts`.
+- The frontend `client.ts` is the only file that knows about HTTP endpoints.
+- `useRunStream` is the only file that knows about WebSocket protocol.
+
+---
+
+## Production-Grade Expectations
+
+- No `console.log` debug statements in committed code.
+- No hardcoded absolute paths (TD-02 already fixed; keep it that way).
+- All file I/O is try/caught. Disk errors are non-fatal and logged to the run's log buffer.
+- Path traversal protection on all asset-serving routes.
+- Evidence cache is keyed per run, not shared.
+- History JSONL append is atomic enough for single-writer usage. Do not add locking.
+
+---
+
+## Memory Rules
+
+- `active_tasks.md`: sprint status + backlog with priority + known broken.
+- `tech_debt.md`: debt items with ID, location, impact, effort. Resolved items move to "Resolved" section.
+- `qa_findings.md`: bugs found (open) and fixed (resolved) with symptom/cause/fix.
+- `session_log.md`: one entry per session, changes summary only — no prose.
+- `architecture.md`: current system topology, key decisions, constraints.
+- `product_vision.md`: user goals, non-goals, positioning.
+- `ui_ux_direction.md`: design system, patterns, open UX decisions.
+
+Keep all files concise. No narratives. Tables and bullet lists only.
+
+---
+
+## Stop Conditions
+
+Stop when:
+- All HIGH and CRITICAL items are resolved.
+- Remaining items are LOW effort and LOW impact.
+- Context quality is degrading (repeating same analysis without new findings).
+
+Before stopping:
+1. `npm run typecheck:ui && npm run build:ui && npm run typecheck`
+2. `git add … && git commit && git push`
+3. Update all memory files.
+4. Record top 3 next opportunities in `active_tasks.md`.
