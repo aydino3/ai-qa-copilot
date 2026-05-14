@@ -51,11 +51,14 @@ function relativeTime(ts: number): string {
 
 type FilterKey = 'all' | 'completed' | 'failed' | 'running';
 
+const PAGE_SIZE = 20;
+
 export function History() {
   const [runs, setRuns]       = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [filter, setFilter]   = useState<FilterKey>('all');
+  const [page, setPage]       = useState(1);
 
   function load(quiet = false) {
     if (!quiet) setLoading(true);
@@ -93,6 +96,9 @@ export function History() {
     if (filter === 'failed') return runs.filter((r) => r.status === 'failed' || r.status === 'error');
     return runs.filter((r) => r.status === filter);
   }, [runs, filter]);
+
+  const pagedRuns = filteredRuns.slice(0, page * PAGE_SIZE);
+  const hasMore   = pagedRuns.length < filteredRuns.length;
 
   return (
     <section className="space-y-8 animate-slide-up">
@@ -185,7 +191,7 @@ export function History() {
           return (
             <button
               key={key}
-              onClick={() => setFilter(key)}
+              onClick={() => { setFilter(key); setPage(1); }}
               className={`text-xs font-semibold px-3.5 py-1.5 rounded-full transition-all duration-200 capitalize ${
                 active
                   ? 'bg-gradient-brand text-white shadow-glow-sm'
@@ -228,15 +234,27 @@ export function History() {
           </div>
         </div>
       ) : (
-        <div className="grid gap-3">
-          {filteredRuns.map((r) => (
-            <RunCard key={r.id} run={r} />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-3">
+            {pagedRuns.map((r) => (
+              <RunCard key={r.id} run={r} />
+            ))}
+          </div>
+          {hasMore && (
+            <div className="flex justify-center">
+              <button
+                onClick={() => setPage((p) => p + 1)}
+                className="btn-ghost text-xs"
+              >
+                Load more ({filteredRuns.length - pagedRuns.length} remaining)
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       <p className="text-xs text-slate-600">
-        History is in-memory and resets when the backend restarts.
+        History is persisted to <code className="font-mono">test-results/runs.jsonl</code> and survives backend restarts.
       </p>
     </section>
   );

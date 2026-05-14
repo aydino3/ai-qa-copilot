@@ -13,6 +13,7 @@ import { Terminal } from '../components/Terminal';
 import { ManagerTimeline } from '../components/ManagerTimeline';
 import { RunReport } from '../components/RunReport';
 import { Spinner } from '../components/Spinner';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 type ViewMode = 'evidence' | 'live' | 'developer';
 
@@ -155,7 +156,9 @@ export function RunDetails() {
         evidenceLoading ? (
           <div className="card p-5 min-h-48"><Spinner label="Loading test evidence…" /></div>
         ) : hasEvidence ? (
-          <RunReport evidence={evidence!} />
+          <ErrorBoundary>
+            <RunReport evidence={evidence!} />
+          </ErrorBoundary>
         ) : (
           <div className="card p-5 flex flex-col items-center justify-center h-48 text-slate-500 space-y-2">
             <span className="text-3xl">📭</span>

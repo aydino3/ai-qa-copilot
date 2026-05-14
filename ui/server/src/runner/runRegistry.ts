@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import * as fs from 'node:fs';
+import * as fsp from 'node:fs/promises';
+import * as path from 'node:path';
 
 export type RunStatus = 'running' | 'completed' | 'failed' | 'error';
 
@@ -27,14 +30,65 @@ export interface RunRecord {
   steps: StepPayload[];
   results: unknown | null;
   errorMessage: string | null;
+  /** Cached evidence payload, set once on finalize to avoid re-parsing on every request. */
+  _evidenceCache?: unknown;
 }
 
 const MAX_LOG_CHUNKS = 5000;
 const MAX_STEP_EVENTS = 2000;
 
+// Resolved lazily so config can be loaded before the file is read.
+let _historyPath: string | null = null;
+function historyPath(): string {
+  if (!_historyPath) {
+    // Inline to avoid circular dep with config.ts
+    const root = process.env.FRAMEWORK_ROOT ?? path.resolve(new URL(import.meta.url).pathname, '..', '..', '..', '..', '..');
+    _historyPath = path.join(root, 'test-results', 'runs.jsonl');
+  }
+  return _historyPath;
+}
+
+function persistRecord(record: RunRecord): void {
+  const summary: Omit<RunRecord, 'logs' | 'steps' | '_evidenceCache'> = (() => {
+    const { logs: _l, steps: _s, _evidenceCache: _e, ...rest } = record;
+    void _l; void _s; void _e;
+    return rest;
+  })();
+  try {
+    fs.mkdirSync(path.dirname(historyPath()), { recursive: true });
+    fs.appendFileSync(historyPath(), JSON.stringify(summary) + '\n', 'utf8');
+  } catch {
+    // Non-fatal — history loss on disk error is acceptable
+  }
+}
+
+function loadHistory(): RunRecord[] {
+  try {
+    const raw = fs.readFileSync(historyPath(), 'utf8');
+    return raw
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const r = JSON.parse(line) as RunRecord;
+        r.logs = [];
+        r.steps = [];
+        return r;
+      });
+  } catch {
+    return [];
+  }
+}
+
 class RunRegistry extends EventEmitter {
   private runs = new Map<string, RunRecord>();
   private activeId: string | null = null;
+
+  constructor() {
+    super();
+    for (const record of loadHistory()) {
+      this.runs.set(record.id, record);
+    }
+  }
 
   hasActive(): boolean {
     return this.activeId !== null;
@@ -101,6 +155,7 @@ class RunRegistry extends EventEmitter {
     Object.assign(record, patch);
     record.endedAt = Date.now();
     if (this.activeId === id) this.activeId = null;
+    persistRecord(record);
     this.emit('status', record);
   }
 }
