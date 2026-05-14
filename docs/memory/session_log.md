@@ -4,6 +4,23 @@ _Newest entry first._
 
 ---
 
+## 2026-05-14 — Session 6 (Visual Regression Removal + Multi-Agent Scaffold)
+
+**Branch:** `claude/improve-quality-reduce-debt-jvOBx`
+
+### Changes Made
+| Commit | Summary |
+|--------|---------|
+| `ebcf23f` | Remove visual regression system; scaffold multi-agent autonomous runner |
+
+### Key Decisions
+- **Total removal, no replacement** — removed toHaveScreenshot(), ImageCompareSlider, needsBaseline(), patchBaselineResults(), forcePass, and all visual fields (baseline/actual/diff/baselineRun) from every layer (config, runner, routes, client, components, pages)
+- **Run status now reflects reality** — exit 0 → `completed`, non-zero → `failed`. No patching.
+- **Multi-agent scaffold** — 6 composable roles (PO, Architect, BackendEng, FrontendEng, QA, MemoryScribe); `autonomous-run.js` orchestrates them in sequence; GitHub Actions daily cron fires at 03:00 UTC
+- **Engineers need real file context** — current scaffold passes architecture.md only; TD for follow-up
+
+---
+
 ## 2026-05-14 — Session 5 (Autonomous Engineering Bootstrap)
 
 **Branch:** `claude/improve-quality-reduce-debt-jvOBx`
