@@ -1,18 +1,30 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
 import { Dashboard } from './pages/Dashboard';
 import { RunDetails } from './pages/RunDetails';
 import { Settings } from './pages/Settings';
 import { NewTest } from './pages/NewTest';
 import { History } from './pages/History';
+import { fetchRuns } from './api/client';
 
-const NAV = [
-  { to: '/', label: 'Dashboard',  icon: '⊞', end: true },
-  { to: '/new-test', label: 'New Test', icon: '✦', end: false },
-  { to: '/history',  label: 'History',  icon: '⌛', end: false },
-  { to: '/settings', label: 'Settings', icon: '⚙', end: false },
-];
+function useActiveRunCount() {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    function poll() {
+      fetchRuns()
+        .then((r) => { if (!cancelled) setCount(r.runs.filter((x) => x.status === 'running').length); })
+        .catch(() => {});
+    }
+    poll();
+    const id = setInterval(poll, 4000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+  return count;
+}
 
 export function App() {
+  const activeCount = useActiveRunCount();
   return (
     <div className="min-h-screen flex flex-col bg-surface">
       {/* Top nav */}
@@ -30,7 +42,12 @@ export function App() {
 
           {/* Nav links */}
           <nav className="flex items-center gap-1">
-            {NAV.map(({ to, label, icon, end }) => (
+            {[
+              { to: '/', label: 'Dashboard', icon: '⊞', end: true },
+              { to: '/new-test', label: 'New Test', icon: '✦', end: false },
+              { to: '/history',  label: 'History',  icon: '⌛', end: false },
+              { to: '/settings', label: 'Settings', icon: '⚙', end: false },
+            ].map(({ to, label, icon, end }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -43,6 +60,11 @@ export function App() {
               >
                 <span className="text-[11px]">{icon}</span>
                 {label}
+                {to === '/history' && activeCount > 0 && (
+                  <span className="ml-0.5 min-w-[16px] h-4 rounded-full bg-brand-500 text-white text-[9px] font-bold flex items-center justify-center px-1 leading-none">
+                    {activeCount}
+                  </span>
+                )}
               </NavLink>
             ))}
           </nav>

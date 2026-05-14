@@ -70,7 +70,14 @@ runsRouter.get('/:id/evidence', (req: Request, res: Response) => {
     res.status(404).json({ error: 'not_found' });
     return;
   }
-  res.json(buildEvidence(record));
+  // Cache evidence after the run is terminal — re-parsing large JSON on every request is wasteful.
+  if (record.status !== 'running' && record._evidenceCache) {
+    res.json(record._evidenceCache);
+    return;
+  }
+  const evidence = buildEvidence(record);
+  if (record.status !== 'running') record._evidenceCache = evidence;
+  res.json(evidence);
 });
 
 // ─── Asset-serving endpoint ───────────────────────────────────────────────────
@@ -100,6 +107,17 @@ runsRouter.get('/:id/asset', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'file_not_found' });
     return;
   }
+  const ext = path.extname(absPath).toLowerCase();
+  const mimeMap: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webm': 'video/webm',
+    '.mp4': 'video/mp4',
+    '.zip': 'application/zip',
+    '.json': 'application/json',
+  };
+  if (mimeMap[ext]) res.setHeader('Content-Type', mimeMap[ext]);
   res.sendFile(absPath, (err) => {
     if (err && !res.headersSent) res.status(404).json({ error: 'file_not_found' });
   });

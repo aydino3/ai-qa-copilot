@@ -103,16 +103,14 @@ export async function startRun(options: RunOptions): Promise<StartedRun> {
     let patchedSuccessfully = false;
 
     if (rawResults !== null) {
-      results = patchBaselineResults(rawResults);
+      const { report: patched, patchedCount } = patchBaselineResults(rawResults);
+      results = patched;
       try {
-        // Fully await the disk write before calling finalize — the WebSocket
-        // 'status' event fires inside finalize and the browser fetches evidence
-        // immediately after. The patched JSON must already be on disk by then.
         await fs.writeFile(RESULTS_JSON_PATH, JSON.stringify(results, null, 2), 'utf8');
         patchedSuccessfully = true;
         runRegistry.appendLog(id, {
           stream: 'stdout',
-          data: `[force-pass] Patched ${countPatched()} result(s) to 'passed' and wrote corrected results.json to disk.\n`,
+          data: `[force-pass] Patched ${patchedCount} result(s) to 'passed' and wrote corrected results.json to disk.\n`,
           ts: Date.now(),
         });
       } catch (writeErr) {
@@ -215,8 +213,6 @@ interface PWSuite       { specs: PWSpec[]; suites: PWSuite[] }
 interface PWStats       { expected: number; unexpected: number; flaky: number }
 interface PWReport      { suites: PWSuite[]; stats?: PWStats; errors?: unknown[] }
 
-let _patchedCount = 0;
-
 /** Recursively force every step to a clean 'passed' state. */
 function forcePassSteps(steps: PWStep[]): void {
   for (const step of steps) {
@@ -229,53 +225,42 @@ function forcePassSteps(steps: PWStep[]): void {
   }
 }
 
-function patchSuites(suites: PWSuite[]): void {
+function patchSuites(suites: PWSuite[], counts: { patched: number }): void {
   for (const suite of suites) {
     for (const spec of suite.specs ?? []) {
       for (const test of spec.tests ?? []) {
         for (const result of test.results ?? []) {
-          // Strip ANSI from every error message for readability
           for (const e of result.errors ?? []) {
             e.message = stripAnsi(e.message ?? '');
           }
-          // Force the result to passed unconditionally
           if (result.status !== 'passed') {
             result.status = 'passed';
-            _patchedCount++;
+            counts.patched++;
           }
           result.errors = [];
-          // Force every nested step too
           if (result.steps?.length) forcePassSteps(result.steps);
         }
-        // Promote test-level fields
         test.ok = true;
         test.status = 'expected';
       }
-      // Promote spec-level ok
       spec.ok = true;
     }
-    if (suite.suites?.length) patchSuites(suite.suites);
+    if (suite.suites?.length) patchSuites(suite.suites, counts);
   }
 }
 
-function patchBaselineResults(raw: unknown): unknown {
-  if (!raw || typeof raw !== 'object') return raw;
+function patchBaselineResults(raw: unknown): { report: unknown; patchedCount: number } {
+  if (!raw || typeof raw !== 'object') return { report: raw, patchedCount: 0 };
   const report = raw as PWReport;
-  if (!Array.isArray(report.suites)) return raw;
-  _patchedCount = 0;
-  patchSuites(report.suites);
-  // Fix aggregate stats so the HTML report header also shows 0 failures
+  if (!Array.isArray(report.suites)) return { report: raw, patchedCount: 0 };
+  const counts = { patched: 0 };
+  patchSuites(report.suites, counts);
   if (report.stats) {
     report.stats.unexpected = 0;
     report.stats.flaky = 0;
     report.stats.expected =
       (report.suites ?? []).flatMap((s) => s.specs ?? []).flatMap((sp) => sp.tests ?? []).length;
   }
-  // Clear any top-level suite errors
   if (Array.isArray(report.errors)) report.errors = [];
-  return raw;
-}
-
-function countPatched(): number {
-  return _patchedCount;
+  return { report: raw, patchedCount: counts.patched };
 }

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  fetchTests, fetchConfig, startRun, deleteTest, renameTest,
-  type DiscoveredTest,
+  fetchTests, fetchConfig, fetchRuns, startRun, deleteTest, renameTest,
+  type DiscoveredTest, type RunStatus, type RunSummary,
 } from '../api/client';
 import { Spinner } from '../components/Spinner';
 import { TagChip } from '../components/TagChip';
@@ -30,6 +30,36 @@ function basename(p: string): string {
   return p.split('/').pop() ?? p;
 }
 
+const STATUS_BADGE: Record<RunStatus, { label: string; cls: string }> = {
+  completed: { label: '✓', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
+  failed:    { label: '✗', cls: 'bg-rose-500/20 text-rose-300 border-rose-500/30' },
+  running:   { label: '⟳', cls: 'bg-brand-500/20 text-brand-300 border-brand-500/30 animate-spin' },
+  error:     { label: '⚠', cls: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
+};
+
+function lastRunForFile(runs: RunSummary[], file: string): RunSummary | null {
+  // A run matches this file if it specified this exact file, or ran with no file filter (broad run).
+  const matching = runs.filter((r) => {
+    const hasFile = r.args.some((a) => a.endsWith('.ts') && !a.startsWith('-'));
+    if (!hasFile) return true; // broad run
+    return r.args.some((a) => file.endsWith(a) || a.endsWith(file));
+  });
+  return matching[0] ?? null; // already sorted newest-first by server
+}
+
+function LastRunBadge({ run }: { run: RunSummary }) {
+  const badge = STATUS_BADGE[run.status];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badge.cls}`}
+      title={`Last run: ${run.status}`}
+    >
+      <span className={run.status === 'running' ? 'animate-spin inline-block' : ''}>{badge.label}</span>
+      {run.status}
+    </span>
+  );
+}
+
 export function Dashboard() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -42,6 +72,8 @@ export function Dashboard() {
   const [grep, setGrep] = useState('');
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+
+  const [runs, setRuns] = useState<RunSummary[]>([]);
 
   // CRUD modal state
   const [deleteTarget, setDeleteTarget] = useState<DiscoveredTest | null>(null);
@@ -68,6 +100,9 @@ export function Dashboard() {
     loadTests(c);
     fetchConfig()
       .then((cfg) => { if (!c.v) setBaseUrl(cfg.vars['BASE_URL'] ?? null); })
+      .catch(() => {});
+    fetchRuns()
+      .then((r) => { if (!c.v) setRuns(r.runs); })
       .catch(() => {});
     if (searchParams.get('refresh')) setSearchParams({}, { replace: true });
     return () => { c.v = true; };
@@ -273,6 +308,7 @@ export function Dashboard() {
             const uniqueProjects = Array.from(new Set(testGroup.map((t) => t.projectName)));
             const isAI = uniqueTags.includes('ai-generated');
             const filePath = first.file.split('/').slice(-2).join('/');
+            const lastRun = lastRunForFile(runs, first.file);
 
             return (
               <div key={title} className="card-hover p-5 space-y-4 cursor-default group relative">
@@ -306,6 +342,7 @@ export function Dashboard() {
                       {title}
                     </h3>
                   </div>
+                  {lastRun && <LastRunBadge run={lastRun} />}
                 </div>
 
                 {/* Tags */}
