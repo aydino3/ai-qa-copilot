@@ -155,15 +155,8 @@ async function needsBaseline(file: string): Promise<boolean> {
   try {
     const entries = await fs.readdir(snapshotDir, { recursive: true });
     const hasSnapshots = entries.some((e) => /\.(png|jpg|jpeg)$/i.test(String(e)));
-    const result = !hasSnapshots;
-    console.log(
-      `[DEBUG] Baseline check for "${path.basename(file)}": dir="${snapshotDir}" entries=${entries.length} hasSnapshots=${hasSnapshots} needsBaseline=${result}`,
-    );
-    return result;
+    return !hasSnapshots;
   } catch {
-    console.log(
-      `[DEBUG] Baseline check for "${path.basename(file)}": dir not found → needsBaseline=true`,
-    );
     return true;
   }
 }

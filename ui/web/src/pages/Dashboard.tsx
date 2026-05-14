@@ -71,6 +71,7 @@ export function Dashboard() {
   const [project, setProject] = useState('');
   const [grep, setGrep] = useState('');
   const [starting, setStarting] = useState(false);
+  const [startingFile, setStartingFile] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
 
   const [runs, setRuns] = useState<RunSummary[]>([]);
@@ -137,6 +138,20 @@ export function Dashboard() {
       setStartError(err instanceof Error ? err.message : String(err));
     } finally {
       setStarting(false);
+    }
+  }
+
+  async function handleRunFile(file: string) {
+    if (startingFile) return;
+    setStartingFile(file);
+    setStartError(null);
+    try {
+      const { runId } = await startRun({ file });
+      navigate(`/runs/${runId}`);
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStartingFile(null);
     }
   }
 
@@ -361,9 +376,22 @@ export function Dashboard() {
                       </span>
                     ))}
                   </div>
-                  <span className="text-[11px] text-slate-600 font-mono truncate max-w-[120px]" title={first.file}>
-                    {filePath}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-600 font-mono truncate max-w-[100px]" title={first.file}>
+                      {filePath}
+                    </span>
+                    <button
+                      onClick={() => void handleRunFile(first.file)}
+                      disabled={!!startingFile || starting}
+                      title="Run this file"
+                      aria-label="Run this file"
+                      className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-[10px] text-slate-400 hover:text-brand-300 hover:bg-brand-500/15 active:scale-90 transition-all duration-150 disabled:opacity-30"
+                    >
+                      {startingFile === first.file
+                        ? <span className="w-3 h-3 rounded-full border border-brand-400 border-t-transparent animate-spin" />
+                        : '▶'}
+                    </button>
+                  </div>
                 </div>
               </div>
             );

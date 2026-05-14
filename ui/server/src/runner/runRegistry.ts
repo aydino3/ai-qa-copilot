@@ -1,6 +1,5 @@
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
-import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 
 export type RunStatus = 'running' | 'completed' | 'failed' | 'error';
@@ -33,6 +32,8 @@ export interface RunRecord {
   /** Cached evidence payload, set once on finalize to avoid re-parsing on every request. */
   _evidenceCache?: unknown;
 }
+
+export type RunSummaryRecord = Omit<RunRecord, 'logs' | 'steps' | 'results' | '_evidenceCache'>;
 
 const MAX_LOG_CHUNKS = 5000;
 const MAX_STEP_EVENTS = 2000;
@@ -102,11 +103,11 @@ class RunRegistry extends EventEmitter {
     return this.runs.get(id) ?? null;
   }
 
-  list(): Omit<RunRecord, 'logs' | 'steps'>[] {
-    const out: Omit<RunRecord, 'logs' | 'steps'>[] = [];
+  list(): RunSummaryRecord[] {
+    const out: RunSummaryRecord[] = [];
     for (const record of this.runs.values()) {
-      const { logs: _logs, steps: _steps, ...summary } = record;
-      void _logs; void _steps;
+      const { logs: _l, steps: _s, results: _r, _evidenceCache: _e, ...summary } = record;
+      void _l; void _s; void _r; void _e;
       out.push(summary);
     }
     out.sort((a, b) => b.startedAt - a.startedAt);

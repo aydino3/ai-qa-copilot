@@ -22,7 +22,6 @@ export interface RunSummary {
   startedAt: number;
   endedAt: number | null;
   args: string[];
-  results: unknown | null;
   errorMessage: string | null;
 }
 

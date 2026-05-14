@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 
 interface DonutProps {
   value: number;
@@ -29,9 +29,13 @@ export function Donut({
   const target = Math.max(0, Math.min(1, value / safeMax));
 
   const [pct, setPct] = useState(0);
-  useEffect(() => {
-    const id = window.requestAnimationFrame(() => setPct(target));
-    return () => window.cancelAnimationFrame(id);
+  useLayoutEffect(() => {
+    // Double rAF ensures the browser has painted before we trigger the CSS transition.
+    let id1: number;
+    const id2 = window.requestAnimationFrame(() => {
+      id1 = window.requestAnimationFrame(() => setPct(target));
+    });
+    return () => { window.cancelAnimationFrame(id2); window.cancelAnimationFrame(id1); };
   }, [target]);
 
   const offset = circumference * (1 - pct);

@@ -48,8 +48,8 @@ runsRouter.get('/:id', (req: Request, res: Response) => {
     res.status(404).json({ error: 'not_found' });
     return;
   }
-  const { logs: _logs, ...summary } = record;
-  void _logs;
+  const { logs: _logs, steps: _steps, results: _results, _evidenceCache: _ec, ...summary } = record;
+  void _logs; void _steps; void _results; void _ec;
   res.json(summary);
 });
 
