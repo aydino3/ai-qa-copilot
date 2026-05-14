@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   cancelRun,
   fetchRun,
@@ -19,6 +19,7 @@ type ViewMode = 'evidence' | 'live' | 'developer';
 
 export function RunDetails() {
   const { runId } = useParams<{ runId: string }>();
+  const navigate = useNavigate();
   const [summary, setSummary] = useState<RunSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -98,7 +99,7 @@ export function RunDetails() {
           <button onClick={handleCancel} disabled={!isRunning || cancelling} className="btn-danger">
             {cancelling ? 'Cancelling…' : 'Cancel run'}
           </button>
-          <Link to="/" className="btn-ghost text-sm">← Dashboard</Link>
+          <button onClick={() => navigate(-1)} className="btn-ghost text-sm">← Back</button>
         </div>
       </header>
 
