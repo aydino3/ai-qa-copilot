@@ -1,6 +1,6 @@
 # Active Tasks
 
-_Last updated: 2026-05-14_
+_Last updated: 2026-05-15_
 
 ## Status Key
 `🔴 BLOCKED` `🟡 IN PROGRESS` `🟢 DONE` `⚪ QUEUED`
@@ -13,6 +13,7 @@ _Last updated: 2026-05-14_
 |--------|------|
 | ebcf23f | CRITICAL: Remove visual regression system completely — toHaveScreenshot, ImageCompareSlider, needsBaseline, patchBaselineResults, forcePass, visualRegression checkbox, baseline/actual/diff fields |
 | ebcf23f | Multi-agent scaffold: scripts/autonomous-run.js (6-role orchestration), scripts/agents/roles.js, .github/workflows/daily-autonomous.yml (daily cron) |
+| [auto] | autonomous-run.js: wire real file-read context for engineer agents |
 
 ---
 
@@ -31,8 +32,7 @@ _Last updated: 2026-05-14_
 | 9 | TD-15: Zod body validation on routes | LOW | Malformed bodies currently get inline checks |
 | 10 | Mobile layout audit | LOW | Card grid breakpoints, nav wrapping |
 | 11 | a11y: skip-to-content link | LOW | Keyboard navigation |
-| 12 | autonomous-run.js: wire real file-read context for engineer agents | MED | Currently passes architecture.md only; should pass actual file contents |
-| 13 | autonomous-run.js: add retry loop on QA rejection | LOW | Re-send QA issues to engineer for a second attempt |
+| 12 | autonomous-run.js: add retry loop on QA rejection | LOW | Re-send QA issues to engineer for a second attempt |
 
 ## Known Broken / Needs Watch
 - Mock step stubs use inferred Playwright actions — may need tuning for unusual step phrasings

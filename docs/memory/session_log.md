@@ -4,6 +4,20 @@ _Newest entry first._
 
 ---
 
+## 2026-05-15 — Session 7 (Engineer Context Wiring)
+
+**Branch:** `[auto]`
+
+### Changes Made
+| Commit | Summary |
+|--------|---------|
+| `[auto]` | autonomous-run.js: wire real file-read context for engineer agents |
+
+### Key Decisions
+- Engineer agents now receive actual file contents from the project for context, instead of a placeholder.
+
+---
+
 ## 2026-05-14 — Session 6 (Visual Regression Removal + Multi-Agent Scaffold)
 
 **Branch:** `claude/improve-quality-reduce-debt-jvOBx`
