@@ -9,10 +9,12 @@
   }
 
   html {
-    @apply bg-surface text-slate-100 antialiased;
+    @apply bg-surface text-slate-100 antialiased font-sans;
     scrollbar-color: rgba(108, 99, 255, 0.3) transparent;
     scrollbar-width: thin;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
   }
+  body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; font-synthesis: none; }
 
   ::-webkit-scrollbar {
     width: 6px;
@@ -81,6 +83,23 @@
            transition-all duration-150;
   }
   .input-mono { @apply input font-mono; }
+
+  /* Pill-style status badges */
+  .status-pill {
+    @apply inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider
+           border px-3 py-1 rounded-full whitespace-nowrap;
+  }
+  .status-pill-running   { @apply status-pill bg-brand-500/15   text-brand-200    border-brand-500/40   shadow-glow-sm animate-ring-pulse; }
+  .status-pill-completed { @apply status-pill bg-emerald-500/15 text-emerald-200  border-emerald-500/40; box-shadow: 0 0 16px rgba(16,185,129,0.25); }
+  .status-pill-failed    { @apply status-pill bg-rose-500/15    text-rose-200     border-rose-500/40; box-shadow: 0 0 16px rgba(244,63,94,0.25); }
+  .status-pill-error     { @apply status-pill bg-amber-500/15   text-amber-200    border-amber-500/40; box-shadow: 0 0 16px rgba(245,158,11,0.20); }
+  .status-pill-unknown   { @apply status-pill bg-surface-4      text-slate-400    border-white/10; }
+
+  /* Stat tile used in summary headers */
+  .stat-card {
+    @apply card p-5 flex flex-col gap-2 relative overflow-hidden transition-all duration-300
+           hover:border-brand-500/30 hover:-translate-y-0.5;
+  }
 
   /* Tag chips */
   .tag-chip {

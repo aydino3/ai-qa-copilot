@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { TestEvidence, EvidenceStep } from '../api/client';
+import { ImageCompareSlider } from './ImageCompareSlider';
 
 function fmtMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -261,20 +262,44 @@ export function EvidenceModal({
                 </Section>
               )}
 
-              {/* Visual regression — 3-panel comparison */}
+              {/* Visual regression — interactive slider when both images exist,
+                  fall back to a static grid otherwise. */}
               {hasVisual && (
                 <Section title="Visual Regression">
-                  <div className={`grid gap-4 ${visualPanels === 3 ? 'grid-cols-3' : visualPanels === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                    {test.baseline && (
-                      <ImagePanel label="Baseline" src={test.baseline} highlight="pass" />
-                    )}
-                    {test.actual && (
-                      <ImagePanel label="Actual" src={test.actual} highlight="fail" />
-                    )}
-                    {test.diff && (
-                      <ImagePanel label="Diff" src={test.diff} highlight="diff" />
-                    )}
-                  </div>
+                  {test.baseline && test.actual ? (
+                    <div className="space-y-4">
+                      <ImageCompareSlider
+                        beforeSrc={test.baseline}
+                        afterSrc={test.actual}
+                        beforeLabel="Baseline"
+                        afterLabel="Actual"
+                      />
+                      {test.diff && (
+                        <details className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] overflow-hidden group">
+                          <summary className="px-4 py-3 cursor-pointer text-xs font-semibold uppercase tracking-widest text-amber-300 flex items-center gap-2 hover:bg-amber-500/[0.08]">
+                            <span className="text-amber-400">▸</span>
+                            Pixel Diff Overlay
+                            <span className="ml-auto text-amber-400/60 font-normal tracking-normal normal-case">Click to expand</span>
+                          </summary>
+                          <div className="p-4 border-t border-amber-500/20">
+                            <ImagePanel label="Diff" src={test.diff} highlight="diff" />
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  ) : (
+                    <div className={`grid gap-4 ${visualPanels === 3 ? 'grid-cols-3' : visualPanels === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                      {test.baseline && (
+                        <ImagePanel label="Baseline" src={test.baseline} highlight="pass" />
+                      )}
+                      {test.actual && (
+                        <ImagePanel label="Actual" src={test.actual} highlight="fail" />
+                      )}
+                      {test.diff && (
+                        <ImagePanel label="Diff" src={test.diff} highlight="diff" />
+                      )}
+                    </div>
+                  )}
                   {!test.actual && !test.diff && test.baseline && (
                     <p className="text-sm text-emerald-400 text-center py-2">
                       ✓ Screenshot matches baseline
