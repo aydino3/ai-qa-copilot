@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { TestEvidence, EvidenceStep } from '../api/client';
-import { ImageCompareSlider } from './ImageCompareSlider';
 
 function fmtMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -73,32 +72,20 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-// ─── Image panel ──────────────────────────────────────────────────────────────
+// ─── Screenshot panel ─────────────────────────────────────────────────────────
 
-function ImagePanel({ label, src, highlight }: { label: string; src: string; highlight?: 'pass' | 'fail' | 'diff' }) {
+function ScreenshotPanel({ label, src }: { label: string; src: string }) {
   const [errored, setErrored] = useState(false);
   if (errored) return null;
 
-  const borderColor =
-    highlight === 'pass' ? 'border-emerald-500/30' :
-    highlight === 'fail' ? 'border-rose-500/30' :
-    highlight === 'diff' ? 'border-amber-500/30' :
-    'border-white/[0.08]';
-
-  const labelColor =
-    highlight === 'pass' ? 'text-emerald-400' :
-    highlight === 'fail' ? 'text-rose-400' :
-    highlight === 'diff' ? 'text-amber-400' :
-    'text-slate-400';
-
   return (
     <div className="space-y-2 flex flex-col">
-      <div className={`text-xs font-semibold text-center uppercase tracking-wider ${labelColor}`}>{label}</div>
+      <div className="text-xs font-semibold text-center uppercase tracking-wider text-slate-400">{label}</div>
       <a
         href={src}
         target="_blank"
         rel="noopener noreferrer"
-        className={`block border-2 ${borderColor} rounded-lg overflow-hidden hover:border-brand-500/50 transition-colors flex-1`}
+        className="block border-2 border-white/[0.08] rounded-lg overflow-hidden hover:border-brand-500/50 transition-colors flex-1"
         title="Click to open full-size"
       >
         <img
@@ -113,21 +100,19 @@ function ImagePanel({ label, src, highlight }: { label: string; src: string; hig
   );
 }
 
-// ─── Main full-screen overlay ─────────────────────────────────────────────────
+// ─── ANSI stripping ───────────────────────────────────────────────────────────
 
-// Strip ANSI colour codes Playwright embeds in error messages so they
-// render as plain text in the browser.
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[^[\]]/g;
 function stripAnsi(s: string): string { return s.replace(ANSI_RE, ''); }
 
+// ─── Main full-screen overlay ─────────────────────────────────────────────────
+
 export function EvidenceModal({
   test,
-  baselineRun = false,
   onClose,
 }: {
   test: TestEvidence;
-  baselineRun?: boolean;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -140,16 +125,12 @@ export function EvidenceModal({
     };
   }, [onClose]);
 
-  const hasSteps     = test.steps.length > 0;
+  const hasSteps      = test.steps.length > 0;
   const hasScreenshots = test.screenshots.length > 0;
-  const hasVideo     = !!test.video;
-  const hasTrace     = !!test.trace;
-  const hasVisual    = !!(test.baseline || test.actual || test.diff);
-  const hasErrors    = test.errors.length > 0;
-  const hasMedia     = hasVideo || hasVisual || hasScreenshots || hasTrace;
-
-  // Count visual panels for grid
-  const visualPanels = [test.baseline, test.actual, test.diff].filter(Boolean).length;
+  const hasVideo      = !!test.video;
+  const hasTrace      = !!test.trace;
+  const hasErrors     = test.errors.length > 0;
+  const hasMedia      = hasVideo || hasScreenshots || hasTrace;
 
   return (
     <div
@@ -177,9 +158,8 @@ export function EvidenceModal({
                 {test.retry > 0 && (
                   <span className="text-amber-400 font-medium">retry #{test.retry}</span>
                 )}
-                {hasVideo    && <span className="text-brand-400">▶ video</span>}
-                {hasVisual   && <span className="text-purple-400">⊞ visual</span>}
-                {hasTrace    && <span>⬡ trace</span>}
+                {hasVideo && <span className="text-brand-400">▶ video</span>}
+                {hasTrace && <span>⬡ trace</span>}
               </div>
             </div>
           </div>
@@ -199,22 +179,7 @@ export function EvidenceModal({
 
           {/* LEFT — steps + errors */}
           <div className="space-y-8">
-            {/* Baseline success banner — replaces errors when this is a baseline-creation run */}
-            {baselineRun && (
-              <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-3">
-                <span className="text-emerald-400 text-xl shrink-0">✓</span>
-                <div>
-                  <div className="text-sm font-semibold text-emerald-300">Baseline Created</div>
-                  <div className="text-xs text-emerald-400/70 mt-0.5">
-                    New snapshot baselines were written. Future runs will compare against these images.
-                    {test.screenshots.length > 0 && ' The captured screenshots are shown in the Media panel.'}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Real errors (not shown on baseline runs since they're all patched away) */}
-            {hasErrors && !baselineRun && (
+            {hasErrors && (
               <Section title="Errors">
                 <div className="space-y-3">
                   {test.errors.map((err, i) => (
@@ -262,58 +227,12 @@ export function EvidenceModal({
                 </Section>
               )}
 
-              {/* Visual regression — interactive slider when both images exist,
-                  fall back to a static grid otherwise. */}
-              {hasVisual && (
-                <Section title="Visual Regression">
-                  {test.baseline && test.actual ? (
-                    <div className="space-y-4">
-                      <ImageCompareSlider
-                        beforeSrc={test.baseline}
-                        afterSrc={test.actual}
-                        beforeLabel="Baseline"
-                        afterLabel="Actual"
-                      />
-                      {test.diff && (
-                        <details className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] overflow-hidden group">
-                          <summary className="px-4 py-3 cursor-pointer text-xs font-semibold uppercase tracking-widest text-amber-300 flex items-center gap-2 hover:bg-amber-500/[0.08]">
-                            <span className="text-amber-400">▸</span>
-                            Pixel Diff Overlay
-                            <span className="ml-auto text-amber-400/60 font-normal tracking-normal normal-case">Click to expand</span>
-                          </summary>
-                          <div className="p-4 border-t border-amber-500/20">
-                            <ImagePanel label="Diff" src={test.diff} highlight="diff" />
-                          </div>
-                        </details>
-                      )}
-                    </div>
-                  ) : (
-                    <div className={`grid gap-4 ${visualPanels === 3 ? 'grid-cols-3' : visualPanels === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                      {test.baseline && (
-                        <ImagePanel label="Baseline" src={test.baseline} highlight="pass" />
-                      )}
-                      {test.actual && (
-                        <ImagePanel label="Actual" src={test.actual} highlight="fail" />
-                      )}
-                      {test.diff && (
-                        <ImagePanel label="Diff" src={test.diff} highlight="diff" />
-                      )}
-                    </div>
-                  )}
-                  {!test.actual && !test.diff && test.baseline && (
-                    <p className="text-sm text-emerald-400 text-center py-2">
-                      ✓ Screenshot matches baseline
-                    </p>
-                  )}
-                </Section>
-              )}
-
               {/* Screenshots */}
               {hasScreenshots && (
                 <Section title={`Screenshots · ${test.screenshots.length}`}>
                   <div className={`grid gap-4 ${test.screenshots.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
                     {test.screenshots.map((url, i) => (
-                      <ImagePanel key={i} label={`Screenshot ${i + 1}`} src={url} />
+                      <ScreenshotPanel key={i} label={`Screenshot ${i + 1}`} src={url} />
                     ))}
                   </div>
                 </Section>

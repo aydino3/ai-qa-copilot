@@ -25,19 +25,10 @@ CRITICAL OUTPUT FORMAT:
 - DO NOT include any preamble, explanation, or trailing commentary.
 - The first character of your response MUST be the first character of the TypeScript code (typically "import").`;
 
-const VISUAL_REGRESSION_ADDENDUM = `
-
-Visual regression requirement (REQUIRED for this test):
-- Add the tag '@visual' to the tags array.
-- After the page reaches a stable state in each meaningful step, add \`await expect(page).toHaveScreenshot();\` as the last line of that step.
-- Add a final test.step that captures a full-page snapshot: \`await expect(page).toHaveScreenshot({ fullPage: true });\`
-- No extra imports are needed — toHaveScreenshot is part of '@playwright/test'.`;
-
 interface GenerateBody {
   targetUrl?: string;
   steps?: string;
   tags?: string;
-  visualRegression?: boolean;
 }
 
 function parseTags(raw: string): string[] {
@@ -104,29 +95,25 @@ function normalizeQuotesToBackticks(code: string): string {
 }
 
 generateTestRouter.post('/', async (req: Request, res: Response) => {
-  const { targetUrl, steps, tags: rawTags, visualRegression } = (req.body ?? {}) as GenerateBody;
+  const { targetUrl, steps, tags: rawTags } = (req.body ?? {}) as GenerateBody;
   if (!targetUrl || !steps) {
     res.status(400).json({ error: 'missing_fields', message: '`targetUrl` and `steps` are required' });
     return;
   }
 
-  const wantVisual = !!visualRegression;
   const userTags = parseTags(rawTags ?? '');
 
   let code: string;
   try {
     code = AI_ENABLED && process.env.GEMINI_API_KEY
-      ? await generateWithAI(targetUrl, steps, userTags, wantVisual)
-      : generateMock(targetUrl, steps, userTags, wantVisual);
+      ? await generateWithAI(targetUrl, steps, userTags)
+      : generateMock(targetUrl, steps, userTags);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(502).json({ error: 'generation_failed', message });
     return;
   }
 
-  // Defense in depth: regardless of source (AI or mock), rewrite every
-  // test()/test.step() title argument to a backtick template literal so
-  // apostrophes / double quotes in user text can never break the syntax.
   code = normalizeQuotesToBackticks(code);
 
   const slug = toSlug(targetUrl);
@@ -142,34 +129,29 @@ generateTestRouter.post('/', async (req: Request, res: Response) => {
     return;
   }
 
-  res.status(201).json({ filename, filePath, code, aiEnabled: AI_ENABLED && !!process.env.GEMINI_API_KEY, visualRegression: wantVisual });
+  res.status(201).json({ filename, filePath, code, aiEnabled: AI_ENABLED && !!process.env.GEMINI_API_KEY });
 });
 
 async function generateWithAI(
   targetUrl: string,
   steps: string,
   userTags: string[],
-  visualRegression: boolean,
 ): Promise<string> {
   const { GoogleGenerativeAI } = await import('@google/generative-ai');
   const client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
 
-  const systemInstruction = visualRegression
-    ? BASE_SYSTEM_PROMPT + VISUAL_REGRESSION_ADDENDUM
-    : BASE_SYSTEM_PROMPT;
-
-  const allTags = ['@ai-generated', ...userTags, ...(visualRegression ? ['@visual'] : [])];
+  const allTags = ['@ai-generated', ...userTags];
   const userPrompt = `Target URL / Feature: ${targetUrl}
 Tags: ${allTags.join(', ')}
 
 Natural language steps:
 ${steps}
 
-${visualRegression ? 'Visual regression: ENABLED — use toHaveScreenshot() as described in the system prompt.\n\n' : ''}Generate the complete Playwright TypeScript test file now. Output raw TypeScript only — no markdown fences.`;
+Generate the complete Playwright TypeScript test file now. Output raw TypeScript only — no markdown fences.`;
 
   const model = client.getGenerativeModel({
     model: 'gemini-2.5-flash',
-    systemInstruction,
+    systemInstruction: BASE_SYSTEM_PROMPT,
     generationConfig: { maxOutputTokens: 4096, temperature: 0.2 },
   });
 
@@ -233,14 +215,13 @@ function generateMock(
   targetUrl: string,
   steps: string,
   userTags: string[],
-  visualRegression: boolean,
 ): string {
   const isUrl = /^https?:\/\//i.test(targetUrl);
   const humanTitle = isUrl
     ? targetUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '')
     : targetUrl;
 
-  const allTags = ['@ai-generated', ...userTags, ...(visualRegression ? ['@visual'] : [])];
+  const allTags = ['@ai-generated', ...userTags];
   const tagsLiteral = allTags.length === 1
     ? JSON.stringify(allTags[0])
     : `[${allTags.map((t) => JSON.stringify(t)).join(', ')}]`;
@@ -248,14 +229,9 @@ function generateMock(
   const parsedSteps = steps.split('\n').map((s) => s.trim()).filter(Boolean);
 
   const stepBlocks = parsedSteps.map((step) => {
-    const snapshot = visualRegression ? `\n    await expect(page).toHaveScreenshot();` : '';
     const body = inferStepBody(step);
-    return `  await test.step(${toBacktick(step)}, async () => {\n${body}${snapshot}\n  });`;
+    return `  await test.step(${toBacktick(step)}, async () => {\n${body}\n  });`;
   }).join('\n\n');
-
-  const finalSnapshot = visualRegression
-    ? `\n\n  await test.step(${toBacktick('Full-page visual snapshot')}, async () => {\n    await expect(page).toHaveScreenshot({ fullPage: true });\n  });`
-    : '';
 
   const gotoStep = isUrl
     ? `  await test.step(${toBacktick(`Navigate to ${humanTitle}`)}, async () => {\n    await page.goto(${JSON.stringify(targetUrl)});\n    await expect(page).toHaveURL(${JSON.stringify(targetUrl)});\n  });`
@@ -271,7 +247,7 @@ test(
   async ({ page }) => {
 ${gotoStep}
 
-${stepBlocks}${finalSnapshot}
+${stepBlocks}
   }
 );
 `;

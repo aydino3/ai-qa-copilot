@@ -10,18 +10,17 @@ Click the Sign in button
 Verify the URL contains /dashboard
 Verify the heading "Welcome" is visible`;
 
-const PRESET_TAGS = ['@smoke', '@regression', '@visual'];
+const PRESET_TAGS = ['@smoke', '@regression'];
 
 export function NewTest() {
   const navigate = useNavigate();
   const [targetUrl, setTargetUrl] = useState('');
   const [steps, setSteps] = useState('');
   const [tagsInput, setTagsInput] = useState('');
-  const [visualRegression, setVisualRegression] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{
-    filename: string; code: string; aiEnabled: boolean; visualRegression?: boolean;
+    filename: string; code: string; aiEnabled: boolean;
   } | null>(null);
 
   function togglePresetTag(tag: string) {
@@ -50,7 +49,6 @@ export function NewTest() {
         targetUrl: targetUrl.trim(),
         steps: steps.trim(),
         tags: tagsInput.trim() || undefined,
-        visualRegression,
       });
       setPreview(res);
     } catch (err) {
@@ -117,8 +115,7 @@ export function NewTest() {
                 className={`tag-chip cursor-pointer transition-all duration-150 ${
                   hasTag(t)
                     ? t === '@smoke'      ? 'tag-smoke ring-1 ring-emerald-500/50'
-                    : t === '@regression' ? 'tag-regression ring-1 ring-brand-500/50'
-                    : 'tag-visual ring-1 ring-purple-500/50'
+                    : 'tag-regression ring-1 ring-brand-500/50'
                     : 'tag-default hover:border-white/20'
                 }`}
               >
@@ -135,26 +132,6 @@ export function NewTest() {
             className="input text-sm"
           />
         </div>
-
-        {/* Visual regression */}
-        <label className="flex items-start gap-3 card p-4 cursor-pointer hover:border-brand-500/30 transition-all">
-          <input
-            type="checkbox"
-            checked={visualRegression}
-            onChange={(e) => setVisualRegression(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-brand-500"
-          />
-          <span className="flex flex-col gap-1">
-            <span className="text-sm font-semibold text-white flex items-center gap-2">
-              📸 Enable Visual Regression Testing
-              <span className="tag-visual">@visual</span>
-            </span>
-            <span className="text-xs text-slate-500 leading-relaxed">
-              Adds <code className="text-brand-300">toHaveScreenshot()</code> assertions.
-              First run creates the baseline; subsequent runs diff against it.
-            </span>
-          </span>
-        </label>
 
         {/* Submit */}
         <div className="flex items-center gap-3 pt-1">
@@ -188,7 +165,6 @@ export function NewTest() {
               <span className="tag-default">
                 {preview.aiEnabled ? '✨ Gemini' : '📄 template'}
               </span>
-              {preview.visualRegression && <span className="tag-visual">📸 visual</span>}
             </div>
             <button onClick={() => navigate('/?refresh=1')} className="btn-primary text-xs px-4 py-1.5">
               View in Dashboard →

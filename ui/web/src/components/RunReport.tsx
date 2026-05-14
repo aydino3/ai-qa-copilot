@@ -33,11 +33,6 @@ export function RunReport({ evidence }: { evidence: RunEvidence }) {
         </span>
         {passed > 0 && <span className="text-emerald-400 font-medium">✓ {passed} passed</span>}
         {failed > 0 && <span className="text-rose-400 font-medium">✗ {failed} failed</span>}
-        {evidence.baselineRun && (
-          <span className="text-brand-300 text-xs font-medium px-2 py-0.5 rounded-full bg-brand-500/10 border border-brand-500/20">
-            ⊕ baseline run
-          </span>
-        )}
         <span className="text-slate-600 text-xs font-mono ml-auto">{fmtMs(totalMs)} total</span>
       </div>
 
@@ -49,7 +44,7 @@ export function RunReport({ evidence }: { evidence: RunEvidence }) {
       </div>
 
       {selected && (
-        <EvidenceModal test={selected} baselineRun={evidence.baselineRun} onClose={() => setSelected(null)} />
+        <EvidenceModal test={selected} onClose={() => setSelected(null)} />
       )}
     </div>
   );
@@ -57,7 +52,6 @@ export function RunReport({ evidence }: { evidence: RunEvidence }) {
 
 function TestCard({ test, onView }: { test: TestEvidence; onView: () => void }) {
   const hasVideo = !!test.video;
-  const hasVisual = !!(test.baseline || test.actual || test.diff);
   const hasTrace = !!test.trace;
 
   return (
@@ -82,7 +76,6 @@ function TestCard({ test, onView }: { test: TestEvidence; onView: () => void }) 
             <span className="text-xs text-amber-400 font-medium">retry #{test.retry}</span>
           )}
           {hasVideo && <span className="text-xs text-brand-400">▶ video</span>}
-          {hasVisual && <span className="text-xs text-purple-400">⊞ visual</span>}
           {hasTrace && <span className="text-xs text-slate-500">⬡ trace</span>}
           {test.screenshots.length > 0 && (
             <span className="text-xs text-slate-500">

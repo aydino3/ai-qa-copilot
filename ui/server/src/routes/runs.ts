@@ -34,7 +34,6 @@ runsRouter.post('/', async (req: Request, res: Response) => {
       runId: started.id,
       pid: started.pid,
       args: started.args,
-      baselineRun: started.baselineRun,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -188,15 +187,11 @@ export interface TestEvidence {
   screenshots: string[];
   video?: string;
   trace?: string;
-  baseline?: string;
-  actual?: string;
-  diff?: string;
   errors: string[];
 }
 
 export interface RunEvidence {
   runId: string;
-  baselineRun: boolean;
   tests: TestEvidence[];
 }
 
@@ -211,14 +206,14 @@ function toUrl(absPath: string | undefined, runId: string): string | undefined {
   return `/api/runs/${encodeURIComponent(runId)}/asset?p=${encodeURIComponent(rel)}`;
 }
 
-function processStep(s: PWStep, forcePass: boolean): EvidenceStep {
+function processStep(s: PWStep): EvidenceStep {
   return {
     title: s.title,
     duration: s.duration,
     category: s.category,
-    status: forcePass ? 'passed' : (s.error ? 'failed' : 'passed'),
-    error: forcePass ? undefined : s.error?.message,
-    steps: (s.steps ?? []).map((c) => processStep(c, forcePass)),
+    status: s.error ? 'failed' : 'passed',
+    error: s.error?.message,
+    steps: (s.steps ?? []).map((c) => processStep(c)),
   };
 }
 
@@ -240,17 +235,10 @@ function flattenSuites(
 }
 
 function buildEvidence(record: RunRecord): RunEvidence {
-  const baselineRun = record.args.includes('--update-snapshots');
   const report = record.results as PWReport | null;
 
-  // A completed run is always green — force-pass every result in the
-  // evidence response regardless of what the raw Playwright JSON says.
-  // This is the final safety net; spawnRun.ts also patches the on-disk
-  // JSON, but this layer guarantees the UI never shows red on a completed run.
-  const forcePass = record.status === 'completed';
-
   if (!report?.suites) {
-    return { runId: record.id, baselineRun, tests: [] };
+    return { runId: record.id, tests: [] };
   }
 
   const flat = flattenSuites(report.suites);
@@ -272,20 +260,17 @@ function buildEvidence(record: RunRecord): RunEvidence {
       specTitle,
       testTitle: test.title,
       projectName: test.projectName,
-      status: forcePass ? 'passed' : result.status,
-      ok: forcePass ? true : test.ok,
+      status: result.status,
+      ok: test.ok,
       duration: result.duration,
       retry: result.retry,
-      steps: (result.steps ?? []).map((s) => processStep(s, forcePass)),
+      steps: (result.steps ?? []).map((s) => processStep(s)),
       screenshots,
       video: named.get('video'),
       trace: named.get('trace'),
-      baseline: named.get('expected'),
-      actual: named.get('actual'),
-      diff: named.get('diff'),
-      errors: forcePass ? [] : (result.errors ?? []).map((e) => e.message),
+      errors: (result.errors ?? []).map((e) => e.message),
     };
   });
 
-  return { runId: record.id, baselineRun, tests };
+  return { runId: record.id, tests };
 }

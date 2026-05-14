@@ -128,7 +128,6 @@ export interface GenerateTestOptions {
   targetUrl: string;
   steps: string;
   tags?: string;
-  visualRegression?: boolean;
 }
 
 export async function generateTest(opts: GenerateTestOptions): Promise<GenerateTestResponse> {
@@ -163,15 +162,11 @@ export interface TestEvidence {
   screenshots: string[];
   video?: string;
   trace?: string;
-  baseline?: string;
-  actual?: string;
-  diff?: string;
   errors: string[];
 }
 
 export interface RunEvidence {
   runId: string;
-  baselineRun: boolean;
   tests: TestEvidence[];
 }
 

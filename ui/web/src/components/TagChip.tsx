@@ -6,7 +6,6 @@ function chipClass(tag: string): string {
   const t = tag.replace(/^@/, '');
   if (t === 'smoke')      return 'tag-smoke';
   if (t === 'regression') return 'tag-regression';
-  if (t === 'visual')     return 'tag-visual';
   if (t === 'ai-generated') return 'tag-ai';
   return 'tag-default';
 }

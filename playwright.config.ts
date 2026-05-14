@@ -8,9 +8,7 @@ const IS_CI = !!process.env.CI;
 
 export default defineConfig({
   testDir: './tests',
-  // Extend Playwright's default to include our directory-based naming
-  // convention (smoke/regression/visual/api) plus AI-generated tests.
-  testMatch: '**/*.@(spec|test|smoke|regression|visual|api|ai-generated).?(c|m)[jt]s?(x)',
+  testMatch: '**/*.@(spec|test|smoke|regression|api|ai-generated).?(c|m)[jt]s?(x)',
   fullyParallel: true,
   forbidOnly: IS_CI,
   retries: IS_CI ? 2 : 0,
@@ -26,14 +24,10 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     trace: 'retain-on-failure',
-    screenshot: 'on',
-    video: 'on',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
     actionTimeout: 10_000,
     navigationTimeout: 30_000,
-  },
-
-  expect: {
-    toHaveScreenshot: { maxDiffPixelRatio: 0.03 },
   },
 
   projects: [
