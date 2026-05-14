@@ -4,6 +4,21 @@ _Newest entry first._
 
 ---
 
+## 2026-05-14 — Session 5 (Autonomous Engineering Bootstrap)
+
+**Branch:** `claude/improve-quality-reduce-debt-jvOBx`
+
+### Changes Made
+| Commit | Summary |
+|--------|---------|
+| `019af9b` | XS tech debt sweep (TD-01/02/05/06/07/09/12/13/16); disk history; last-run badge; nav badge; history pagination |
+| `c2c7f08` | Memory files update |
+| `e1e5ea6` | CLAUDE.md; ui_ux_direction.md; API payload hardening (strip steps/results/_evidenceCache); debug log removal; per-card ▶ run button; Donut rAF fix |
+| `4331ffc` | TD-08: inferStepBody Playwright stubs; TD-11: WS ?after= cursor + lastTsRef in hook; Donut useLayoutEffect |
+| `9f9d5f2` | RunDetails: context-aware ← Back (navigate(-1)) |
+
+---
+
 ## 2026-05-14 — Session 3 (current)
 
 **Branch:** `claude/design-qa-automation-architecture-W3tXU`

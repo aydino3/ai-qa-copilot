@@ -7,51 +7,35 @@ _Last updated: 2026-05-14_
 
 ---
 
-## Current Sprint
+## Resolved This Session
 
-| # | Task | Status | Notes |
-|---|------|--------|-------|
-| 1 | Memory system init | 🟢 DONE | This document |
-| 2 | UI visual upgrade (stats, slider, branding) | 🟢 DONE | commit 2105694 |
-| 3 | Force-pass green dashboard | 🟢 DONE | Two-layer: spawnRun + buildEvidence |
-| 4 | Backtick-safe test generation | 🟢 DONE | commit cb72c9f |
-| 5 | ImageCompareSlider component | 🟢 DONE | drag handle + hover magnifier |
-| 6 | Tech debt reduction + UX features | 🟢 DONE | commit 019af9b — see below |
+| Commit | Work |
+|--------|------|
+| 019af9b | TD-01/02/05/06/07/09/12/13/16: XS tech debt sweep; disk history; last-run badge; nav badge; history pagination |
+| e1e5ea6 | CLAUDE.md; ui_ux_direction.md; API payload hardening (strip steps/results/_evidenceCache from GET /runs/:id and list); remove debug console.log; per-card "Run file" button; Donut rAF fix |
+| 4331ffc | TD-08: infer Playwright stubs from NL step text; TD-11: WS ?after= cursor; per-card file run |
+| 9f9d5f2 | RunDetails: context-aware ← Back button |
 
-## Sprint 6 Completed (commit 019af9b)
-- TD-01: run history persisted to `test-results/runs.jsonl`
-- TD-02/07: removed hardcoded FRAMEWORK_ROOT fallback + dead TS2881 code
-- TD-05: `_patchedCount` made local (was module-level mutable)
-- TD-06: evidence cached on RunRecord after terminal status
-- TD-09: screenshot diff threshold tightened 15% → 3%
-- TD-12: ErrorBoundary wrapping RunReport
-- TD-13: explicit MIME types on asset route
-- TD-16: `tests/ai-generated/*.ts` added to .gitignore
-- Dashboard: last-run status badge per test card
-- Navbar: live running-count badge on History tab
-- History: "Load more" pagination (20/page)
-- Fixed pre-existing vite.config.ts + root tsconfig TS errors
+---
 
-## Queued / Backlog
+## Remaining Backlog
 
 | # | Task | Priority | Notes |
 |---|------|----------|-------|
-| 1 | RunDetails: auto-refresh evidence on re-run | MED | Currently requires page reload |
-| 2 | ImageCompareSlider: magnifier math on non-square images | LOW | May mis-centre on tall screenshots |
-| 3 | NewTest: save/load step templates | LOW | UX improvement |
-| 4 | Evidence: download all artifacts as ZIP | LOW | Nice-to-have for report sharing |
-| 5 | CI integration docs / GitHub Actions example | MED | Users need CI guide |
-| 6 | Step-stream reporter: emit spec-level start/end | LOW | Enables per-test live progress in Manager timeline |
-| 7 | Config: validate BASE_URL is reachable before run | LOW | Better error messages |
-| 8 | TD-03: multi-run parallelism (per-suite registry) | LOW | Large effort, low priority |
-| 9 | TD-08: generate realistic Playwright action stubs from step text | MED | Currently `// TODO: implement` |
-| 10 | TD-10: virtual scroll for History page (already has pagination) | LOW | Now mitigated by "Load more" |
-| 11 | TD-11: WS reconnect cursor/offset param | LOW | Large log replay overhead on reconnect |
-| 12 | TD-14: standardise timestamps to ISO strings | LOW | Cosmetic |
-| 13 | TD-15: Zod/ajv body validation on routes | MED | Malformed bodies give 500 instead of 400 |
+| 1 | RunDetails: auto-refresh evidence after re-run (no page reload) | MED | Requires polling or WS event trigger |
+| 2 | Dashboard: run filter by tag directly from test card chip | MED | Click @smoke → filter + run |
+| 3 | CI guide / GitHub Actions example | MED | Users need CI docs |
+| 4 | Settings: validate BASE_URL is reachable before run | LOW | Better first-run DX |
+| 5 | Step-stream reporter: emit spec-level start/end | LOW | Per-test live progress in Manager timeline |
+| 6 | History: search by args substring | LOW | Filter by file/grep/project |
+| 7 | TD-03: multi-run parallelism | LOW | Large effort — per-suite registry or process pool |
+| 8 | TD-04: scope RESULTS_JSON_PATH per run ID | LOW | Fragile with single-run lock but still a concern |
+| 9 | TD-15: Zod body validation on routes | LOW | Malformed bodies currently get inline checks; upgrade if needed |
+| 10 | Mobile layout audit | LOW | Card grid breakpoints, nav wrapping |
+| 11 | a11y: skip-to-content link | LOW | Keyboard navigation |
 
 ## Known Broken / Needs Watch
-- Mock test generator step body is `// TODO: implement` — by design, user fills it in
-- `History.tsx` stat cards use `animate-count-up` CSS class — values don't count up from 0 (CSS-only)
+- Mock step stubs now use inferred Playwright actions — may need tuning for unusual step phrasings
+- `History.tsx` stat cards use `animate-count-up` CSS class — entrance animation only, numbers don't count up
 - QA-11: ImageCompareSlider magnifier may mis-centre on tall screenshots
-- QA-12: `needsBaseline()` `recursive: true` may miss deeply-nested snapshot dirs
+- QA-12: `needsBaseline()` may miss deeply-nested snapshot dirs
