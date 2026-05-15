@@ -6,9 +6,6 @@ playwright-report/
 test-results/
 .auth/
 
-# AI-generated tests (ephemeral, not meant for source control)
-tests/ai-generated/*.ts
-
 # Environment
 .env
 .env.local

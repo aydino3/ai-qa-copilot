@@ -19,9 +19,7 @@
     "typecheck:ui": "npm --prefix ui/server run typecheck && npm --prefix ui/web run typecheck"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.27.0",
     "@faker-js/faker": "^8.4.1",
-    "@google/generative-ai": "^0.24.1",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {

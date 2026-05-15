@@ -10,7 +10,7 @@ export default defineConfig({
   testDir: './tests',
   // Extend Playwright's default to include our directory-based naming
   // convention (smoke/regression/visual/api) plus AI-generated tests.
-  testMatch: '**/*.@(spec|test|smoke|regression|visual|api|ai-generated).?(c|m)[jt]s?(x)',
+  testMatch: '**/*.@(spec|test|smoke|regression|visual|api).?(c|m)[jt]s?(x)',
   fullyParallel: true,
   forbidOnly: IS_CI,
   retries: IS_CI ? 2 : 0,

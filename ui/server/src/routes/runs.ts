@@ -26,6 +26,7 @@ runsRouter.post('/', async (req: Request, res: Response) => {
     grep: typeof body.grep === 'string' ? body.grep : undefined,
     project: typeof body.project === 'string' ? body.project : undefined,
     file: typeof body.file === 'string' ? body.file : undefined,
+    updateSnapshots: body.updateSnapshots === true,
   };
 
   try {
@@ -34,7 +35,6 @@ runsRouter.post('/', async (req: Request, res: Response) => {
       runId: started.id,
       pid: started.pid,
       args: started.args,
-      baselineRun: started.baselineRun,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -70,7 +70,6 @@ runsRouter.get('/:id/evidence', (req: Request, res: Response) => {
     res.status(404).json({ error: 'not_found' });
     return;
   }
-  // Cache evidence after the run is terminal — re-parsing large JSON on every request is wasteful.
   if (record.status !== 'running' && record._evidenceCache) {
     res.json(record._evidenceCache);
     return;
@@ -81,8 +80,6 @@ runsRouter.get('/:id/evidence', (req: Request, res: Response) => {
 });
 
 // ─── Asset-serving endpoint ───────────────────────────────────────────────────
-// Serves test-result files (screenshots, videos, traces, snapshots) through the
-// /api/ prefix so the Vite dev-server proxy routes them correctly.
 
 runsRouter.get('/:id/asset', async (req: Request, res: Response) => {
   const record = runRegistry.get(String(req.params.id));
@@ -96,7 +93,6 @@ runsRouter.get('/:id/asset', async (req: Request, res: Response) => {
     return;
   }
   const absPath = path.resolve(FRAMEWORK_ROOT, relPath);
-  // Prevent path traversal outside the framework root
   if (!absPath.startsWith(FRAMEWORK_ROOT + path.sep) && absPath !== FRAMEWORK_ROOT) {
     res.status(403).json({ error: 'forbidden' });
     return;
@@ -123,86 +119,42 @@ runsRouter.get('/:id/asset', async (req: Request, res: Response) => {
   });
 });
 
-// ─── Playwright JSON types (subset we need) ───────────────────────────────────
+// ─── Playwright JSON types ────────────────────────────────────────────────────
 
-interface PWReport {
-  suites: PWSuite[];
-}
-interface PWSuite {
-  title: string;
-  suites: PWSuite[];
-  specs: PWSpec[];
-}
-interface PWSpec {
-  title: string;
-  ok: boolean;
-  tests: PWTest[];
-}
-interface PWTest {
-  title: string;
-  projectName: string;
-  ok: boolean;
-  results: PWTestResult[];
-}
+interface PWReport  { suites: PWSuite[] }
+interface PWSuite   { title: string; suites: PWSuite[]; specs: PWSpec[] }
+interface PWSpec    { title: string; ok: boolean; tests: PWTest[] }
+interface PWTest    { title: string; projectName: string; ok: boolean; results: PWTestResult[] }
 interface PWTestResult {
-  status: string;
-  duration: number;
-  retry: number;
-  steps: PWStep[];
-  attachments: PWAttachment[];
+  status: string; duration: number; retry: number;
+  steps: PWStep[]; attachments: PWAttachment[];
   errors: Array<{ message: string }>;
 }
-interface PWStep {
-  title: string;
-  category: string;
-  duration: number;
-  steps?: PWStep[];
-  error?: { message: string };
-}
-interface PWAttachment {
-  name: string;
-  contentType: string;
-  path?: string;
-}
+interface PWStep    { title: string; category: string; duration: number; steps?: PWStep[]; error?: { message: string } }
+interface PWAttachment { name: string; contentType: string; path?: string }
 
 // ─── Evidence output types ────────────────────────────────────────────────────
 
 export interface EvidenceStep {
-  title: string;
-  duration: number;
-  category: string;
-  status: 'passed' | 'failed';
-  error?: string;
-  steps: EvidenceStep[];
+  title: string; duration: number; category: string;
+  status: 'passed' | 'failed'; error?: string; steps: EvidenceStep[];
 }
 
 export interface TestEvidence {
-  specTitle: string;
-  testTitle: string;
-  projectName: string;
-  status: string;
-  ok: boolean;
-  duration: number;
-  retry: number;
-  steps: EvidenceStep[];
-  screenshots: string[];
-  video?: string;
-  trace?: string;
-  baseline?: string;
-  actual?: string;
-  diff?: string;
+  specTitle: string; testTitle: string; projectName: string;
+  status: string; ok: boolean; duration: number; retry: number;
+  steps: EvidenceStep[]; screenshots: string[];
+  video?: string; trace?: string; baseline?: string; actual?: string; diff?: string;
   errors: string[];
 }
 
 export interface RunEvidence {
   runId: string;
-  baselineRun: boolean;
   tests: TestEvidence[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Convert an absolute filesystem path to a URL routed through /api/runs/:id/asset. */
 function toUrl(absPath: string | undefined, runId: string): string | undefined {
   if (!absPath) return undefined;
   const rel = absPath.startsWith(FRAMEWORK_ROOT)
@@ -211,14 +163,14 @@ function toUrl(absPath: string | undefined, runId: string): string | undefined {
   return `/api/runs/${encodeURIComponent(runId)}/asset?p=${encodeURIComponent(rel)}`;
 }
 
-function processStep(s: PWStep, forcePass: boolean): EvidenceStep {
+function processStep(s: PWStep): EvidenceStep {
   return {
     title: s.title,
     duration: s.duration,
     category: s.category,
-    status: forcePass ? 'passed' : (s.error ? 'failed' : 'passed'),
-    error: forcePass ? undefined : s.error?.message,
-    steps: (s.steps ?? []).map((c) => processStep(c, forcePass)),
+    status: s.error ? 'failed' : 'passed',
+    error: s.error?.message,
+    steps: (s.steps ?? []).map((c) => processStep(c)),
   };
 }
 
@@ -240,17 +192,10 @@ function flattenSuites(
 }
 
 function buildEvidence(record: RunRecord): RunEvidence {
-  const baselineRun = record.args.includes('--update-snapshots');
   const report = record.results as PWReport | null;
 
-  // A completed run is always green — force-pass every result in the
-  // evidence response regardless of what the raw Playwright JSON says.
-  // This is the final safety net; spawnRun.ts also patches the on-disk
-  // JSON, but this layer guarantees the UI never shows red on a completed run.
-  const forcePass = record.status === 'completed';
-
   if (!report?.suites) {
-    return { runId: record.id, baselineRun, tests: [] };
+    return { runId: record.id, tests: [] };
   }
 
   const flat = flattenSuites(report.suites);
@@ -272,20 +217,20 @@ function buildEvidence(record: RunRecord): RunEvidence {
       specTitle,
       testTitle: test.title,
       projectName: test.projectName,
-      status: forcePass ? 'passed' : result.status,
-      ok: forcePass ? true : test.ok,
+      status: result.status,
+      ok: test.ok,
       duration: result.duration,
       retry: result.retry,
-      steps: (result.steps ?? []).map((s) => processStep(s, forcePass)),
+      steps: (result.steps ?? []).map((s) => processStep(s)),
       screenshots,
       video: named.get('video'),
       trace: named.get('trace'),
       baseline: named.get('expected'),
       actual: named.get('actual'),
       diff: named.get('diff'),
-      errors: forcePass ? [] : (result.errors ?? []).map((e) => e.message),
+      errors: (result.errors ?? []).map((e) => e.message),
     };
   });
 
-  return { runId: record.id, baselineRun, tests };
+  return { runId: record.id, tests };
 }

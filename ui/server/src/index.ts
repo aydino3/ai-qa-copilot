@@ -6,7 +6,6 @@ import { PORT, FRAMEWORK_ROOT, TEST_RESULTS_DIR } from './config.js';
 import { testsRouter } from './routes/tests.js';
 import { runsRouter } from './routes/runs.js';
 import { configRouter } from './routes/config.js';
-import { generateTestRouter } from './routes/generateTest.js';
 import { attachLogSocket } from './ws/logSocket.js';
 
 const app = express();
@@ -25,7 +24,6 @@ app.use('/tests', express.static(path.join(FRAMEWORK_ROOT, 'tests')));
 app.use('/api/tests', testsRouter);
 app.use('/api/runs', runsRouter);
 app.use('/api/config', configRouter);
-app.use('/api/generate-test', generateTestRouter);
 
 const server = http.createServer(app);
 attachLogSocket(server);

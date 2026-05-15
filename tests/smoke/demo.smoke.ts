@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 // Runs against example.com so no local server is required.
 test(
   'Example.com page loads and has expected content',
-  { tag: ['@smoke', '@ai-generated'] },
+  { tag: ['@smoke'] },
   async ({ page }) => {
     await test.step('Navigate to example.com', async () => {
       await page.goto('https://example.com');
