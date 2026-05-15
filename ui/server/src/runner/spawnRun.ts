@@ -217,8 +217,7 @@ interface PWReport      { suites: PWSuite[]; stats?: PWStats; errors?: unknown[]
 function forcePassSteps(steps: PWStep[]): void {
   for (const step of steps) {
     if (step.error) {
-      step.error = { message: stripAnsi(step.error.message ?? '') };
-      delete step.error; // remove error key entirely
+      delete step.error;
     }
     if (step.status !== undefined) step.status = 'passed';
     if (step.steps?.length) forcePassSteps(step.steps);
