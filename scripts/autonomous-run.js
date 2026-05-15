@@ -35,6 +35,27 @@ if (!API_KEY) {
 
 const genAI = new GoogleGenerativeAI(API_KEY);
 
+// ─── Retry helper ─────────────────────────────────────────────────────────────
+
+/**
+ * Calls fn(), retrying on transient Gemini errors (503, 429) with exponential
+ * backoff. Throws on the final attempt or on non-retryable errors.
+ */
+async function withRetry(fn, { maxAttempts = 4, baseDelayMs = 2000 } = {}) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const status = err?.status ?? err?.statusCode;
+      const retryable = status === 503 || status === 429;
+      if (!retryable || attempt === maxAttempts) throw err;
+      const delay = baseDelayMs * Math.pow(2, attempt - 1);
+      console.warn(`[retry] Attempt ${attempt} failed (${status}). Retrying in ${delay / 1000}s…`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
+
 // ─── Codebase snapshot ────────────────────────────────────────────────────────
 
 /**
@@ -113,7 +134,7 @@ async function runArchitect(snapshot) {
   });
 
   const prompt = `Here is the current codebase snapshot:\n\n${snapshot}\n\nProduce your improvement plan now.`;
-  const result = await model.generateContent(prompt);
+  const result = await withRetry(() => model.generateContent(prompt));
   const plan = result.response.text();
 
   if (!plan) throw new Error('Architect returned an empty plan.');
@@ -161,7 +182,7 @@ async function runEngineer(snapshot, plan) {
   });
 
   const prompt = `## Codebase snapshot\n\n${snapshot}\n\n## Architect's plan\n\n${plan}\n\nImplement all changes now. Output the JSON patch array only.`;
-  const result = await model.generateContent(prompt);
+  const result = await withRetry(() => model.generateContent(prompt));
   const text = result.response.text();
 
   if (!text) throw new Error('Engineer returned an empty response.');
