@@ -1,227 +1,270 @@
 #!/usr/bin/env node
+'use strict';
+
 /**
- * Autonomous Engineering Runner
+ * Autonomous agent pipeline for ai-qa-copilot.
  *
- * Orchestrates a multi-agent session:
- *   1. Product Owner reads memory → prioritized work order
- *   2. Architect reviews recent diffs → flags violations
- *   3. Backend / Frontend engineers implement top work item
- *   4. QA Engineer reviews proposed changes
- *   5. If approved: write files, typecheck, build, commit, push
- *   6. Memory Scribe updates all memory files
+ * Pipeline:
+ *   1. Architect  — audits codebase, identifies violations and improvements.
+ *   2. Engineer   — receives Architect's plan, emits a JSON array of file patches.
+ *   3. Applier    — writes patches to disk.
  *
  * Usage:
- *   node scripts/autonomous-run.js [--dry-run] [--item <task-id>]
+ *   node scripts/autonomous-run.js
  *
- * Required env vars:
- *   GEMINI_API_KEY   — Gemini API key (gemini-2.5-flash)
- *   GITHUB_TOKEN     — For git push in CI (set by Actions)
+ * Required env:
+ *   GEMINI_API_KEY — Gemini API key (loaded from .env if present)
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { execSync } from 'node:child_process';
-import { resolve, join } from 'node:path';
-import { ROLES } from './agents/roles.js';
+require('dotenv').config();
 
-const ROOT = resolve(import.meta.dirname, '..');
-const MEMORY = join(ROOT, 'docs', 'memory');
-const DRY_RUN = process.argv.includes('--dry-run');
-const FORCED_ITEM = (() => {
-  const idx = process.argv.indexOf('--item');
-  return idx !== -1 ? process.argv[idx + 1] : null;
-})();
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const fs = require('node:fs');
+const path = require('node:path');
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Config ──────────────────────────────────────────────────────────────────
 
-function readMemory(name) {
-  try { return readFileSync(join(MEMORY, name), 'utf8'); }
-  catch { return '(not found)'; }
+const REPO_ROOT = path.resolve(__dirname, '..');
+const MODEL_ID = 'gemini-2.5-flash';
+
+const API_KEY = process.env.GEMINI_API_KEY;
+if (!API_KEY) {
+  console.error('[autonomous-run] GEMINI_API_KEY is not set. Add it to .env or your environment.');
+  process.exit(1);
 }
 
-function writeMemory(name, content) {
-  writeFileSync(join(MEMORY, name), content, 'utf8');
-}
+const genAI = new GoogleGenerativeAI(API_KEY);
 
-function git(cmd) {
-  return execSync(`git -C ${ROOT} ${cmd}`, { encoding: 'utf8' }).trim();
-}
+// ─── Retry helper ─────────────────────────────────────────────────────────────
 
-async function callGemini(systemPrompt, userMessage, temperature = 0.2) {
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
-  const client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = client.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    systemInstruction: systemPrompt,
-    generationConfig: { maxOutputTokens: 8192, temperature },
-  });
-  const result = await model.generateContent(userMessage);
-  return result.response.text().trim();
-}
-
-function parseJson(text, fallback) {
-  try {
-    const match = text.match(/```(?:json)?\s*([\s\S]+?)\s*```/) ?? [null, text];
-    return JSON.parse(match[1]);
-  } catch {
-    console.error('[autonomous-run] JSON parse failed:', text.slice(0, 200));
-    return fallback;
-  }
-}
-
-// ─── Main orchestration ───────────────────────────────────────────────────────
-
-async function run() {
-  if (!process.env.GEMINI_API_KEY) {
-    console.error('[autonomous-run] GEMINI_API_KEY is required');
-    process.exit(1);
-  }
-
-  console.log('[autonomous-run] Starting autonomous session…');
-
-  // Load memory
-  const ctx = {
-    activeTasks:   readMemory('active_tasks.md'),
-    techDebt:      readMemory('tech_debt.md'),
-    qaFindings:    readMemory('qa_findings.md'),
-    sessionLog:    readMemory('session_log.md'),
-    architecture:  readMemory('architecture.md'),
-  };
-
-  // ── Step 1: Product Owner → work order ───────────────────────────────────
-  console.log('[1/6] Product Owner: prioritizing work order…');
-  const poResponse = await callGemini(
-    ROLES.productOwner(ctx),
-    'Produce the prioritized work order for this session.',
-  );
-  const workOrder = parseJson(poResponse, []);
-  if (workOrder.length === 0) {
-    console.log('[autonomous-run] No work items found. Exiting.');
-    return;
-  }
-
-  const workItem = FORCED_ITEM
-    ? workOrder.find((w) => w.id === FORCED_ITEM) ?? workOrder[0]
-    : workOrder[0];
-
-  console.log(`[autonomous-run] Top work item: [${workItem.id}] ${workItem.title}`);
-
-  // ── Step 2: Architect review ──────────────────────────────────────────────
-  console.log('[2/6] Architect: reviewing recent changes…');
-  ctx.changedFiles = (() => {
-    try { return git('diff HEAD~1 --name-only'); }
-    catch { return '(no previous commit)'; }
-  })();
-
-  const archResponse = await callGemini(
-    ROLES.architect(ctx),
-    `Review changed files for architectural violations:\n${ctx.changedFiles}`,
-  );
-  const archFindings = parseJson(archResponse, []);
-  const archErrors = archFindings.filter((f) => f.violation);
-  if (archErrors.length > 0) {
-    console.warn('[autonomous-run] Architectural violations detected:');
-    archErrors.forEach((f) => console.warn(`  ${f.file}: ${f.violation}`));
-  }
-
-  // ── Step 3: Determine engineer role and implement ─────────────────────────
-  console.log('[3/6] Engineer: implementing work item…');
-
-  // Determine if backend or frontend based on task title keywords
-  const isBackend = /server|api|route|registry|spawn|ws|backend/i.test(workItem.title);
-  const rolePrompt = isBackend
-    ? ROLES.backendEngineer({ workItem: `[${workItem.id}] ${workItem.title}\n\nRationale: ${workItem.rationale}`, fileContents: ctx.architecture })
-    : ROLES.frontendEngineer({ workItem: `[${workItem.id}] ${workItem.title}\n\nRationale: ${workItem.rationale}`, fileContents: ctx.architecture });
-
-  const engineerResponse = await callGemini(
-    rolePrompt,
-    `Implement this work item. Return modified files as JSON array.`,
-    0.3,
-  );
-  const proposedFiles = parseJson(engineerResponse, []);
-
-  if (proposedFiles.length === 0) {
-    console.log('[autonomous-run] Engineer produced no file changes. Exiting.');
-    return;
-  }
-
-  // ── Step 4: QA review ────────────────────────────────────────────────────
-  console.log('[4/6] QA Engineer: reviewing proposed changes…');
-  ctx.proposedChanges = proposedFiles
-    .map((f) => `=== ${f.path} ===\n${f.content}`)
-    .join('\n\n');
-
-  const qaResponse = await callGemini(
-    ROLES.qaEngineer(ctx),
-    'Review proposed changes.',
-  );
-  const qaResult = parseJson(qaResponse, { approved: false, issues: [] });
-
-  const qaErrors = (qaResult.issues ?? []).filter((i) => i.severity === 'error');
-  if (!qaResult.approved || qaErrors.length > 0) {
-    console.warn('[autonomous-run] QA review failed:');
-    qaErrors.forEach((i) => console.warn(`  [${i.severity}] ${i.file}: ${i.issue}`));
-    console.log('[autonomous-run] Aborting — not writing files.');
-    return;
-  }
-
-  console.log('[autonomous-run] QA approved.');
-
-  // ── Step 5: Write files, typecheck, build, commit, push ──────────────────
-  if (DRY_RUN) {
-    console.log('[autonomous-run] DRY RUN — skipping file writes and git ops.');
-    proposedFiles.forEach((f) => console.log(`  Would write: ${f.path}`));
-  } else {
-    console.log('[5/6] Writing files and committing…');
-    for (const { path: filePath, content } of proposedFiles) {
-      const abs = resolve(ROOT, filePath);
-      mkdirSync(resolve(abs, '..'), { recursive: true });
-      writeFileSync(abs, content, 'utf8');
-      console.log(`  Wrote: ${filePath}`);
-    }
-
-    // Typecheck + build before committing
+/**
+ * Calls fn(), retrying on transient Gemini errors (503, 429) with exponential
+ * backoff. Throws on the final attempt or on non-retryable errors.
+ */
+async function withRetry(fn, { maxAttempts = 4, baseDelayMs = 2000 } = {}) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      execSync('npm run typecheck:ui && npm run build:ui && npm run typecheck', {
-        cwd: ROOT, stdio: 'inherit',
-      });
-    } catch {
-      console.error('[autonomous-run] Typecheck/build failed — reverting changes.');
-      git('checkout -- .');
-      return;
-    }
-
-    // Commit
-    const branch = git('rev-parse --abbrev-ref HEAD');
-    const msg = `[${workItem.id}] ${workItem.title} (autonomous)`;
-    git(`add ${proposedFiles.map((f) => f.path).join(' ')}`);
-    git(`commit -m "${msg.replace(/"/g, '\\"')}"`);
-    git(`push -u origin ${branch}`);
-    console.log(`[autonomous-run] Committed and pushed to ${branch}`);
-  }
-
-  // ── Step 6: Memory Scribe ─────────────────────────────────────────────────
-  console.log('[6/6] Memory Scribe: updating memory files…');
-  ctx.completedWork = `[${workItem.id}] ${workItem.title}`;
-
-  const scribeResponse = await callGemini(
-    ROLES.memoryScribe(ctx),
-    'Update the memory files to reflect this session.',
-  );
-  const memoryUpdates = parseJson(scribeResponse, {});
-
-  if (!DRY_RUN) {
-    for (const [name, content] of Object.entries(memoryUpdates)) {
-      if (typeof content === 'string' && content.length > 0) {
-        writeMemory(name, content);
-        console.log(`  Updated: docs/memory/${name}`);
-      }
+      return await fn();
+    } catch (err) {
+      const status = err?.status ?? err?.statusCode;
+      const retryable = status === 503 || status === 429;
+      if (!retryable || attempt === maxAttempts) throw err;
+      const delay = baseDelayMs * Math.pow(2, attempt - 1);
+      console.warn(`[retry] Attempt ${attempt} failed (${status}). Retrying in ${delay / 1000}s…`);
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
-
-  console.log('[autonomous-run] Session complete.');
 }
 
-run().catch((err) => {
+// ─── Codebase snapshot ────────────────────────────────────────────────────────
+
+/**
+ * Reads a file relative to REPO_ROOT, returns its content or an error note.
+ */
+function readFile(relPath) {
+  try {
+    return fs.readFileSync(path.join(REPO_ROOT, relPath), 'utf8');
+  } catch {
+    return `(file not found: ${relPath})`;
+  }
+}
+
+/**
+ * Builds a condensed snapshot of key files to feed to the agents.
+ */
+function buildCodebaseSnapshot() {
+  const files = [
+    'playwright.config.ts',
+    'src/ai/failure-analyzer.ts',
+    'src/reporters/ai-enhanced.reporter.ts',
+    'src/utils/env.ts',
+    'src/utils/retry.ts',
+    'src/utils/api.client.ts',
+    'src/fixtures/auth.fixture.ts',
+    'src/fixtures/data.fixture.ts',
+    'src/fixtures/index.ts',
+    'src/pages/base.page.ts',
+    'src/pages/login.page.ts',
+    'src/pages/dashboard.page.ts',
+    'ui/server/src/runner/runRegistry.ts',
+    'ui/server/src/runner/spawnRun.ts',
+    'ui/server/src/routes/runs.ts',
+    'ui/server/src/routes/generateTest.ts',
+    'test-data/factories/base.factory.ts',
+    'docs/memory/architecture.md',
+    'docs/memory/active_tasks.md',
+    'docs/memory/tech_debt.md',
+  ];
+
+  return files
+    .map((f) => `### ${f}\n\`\`\`\n${readFile(f)}\n\`\`\``)
+    .join('\n\n');
+}
+
+// ─── Agent: Architect ─────────────────────────────────────────────────────────
+
+const ARCHITECT_SYSTEM = `You are a senior software architect reviewing an AI-powered QA automation framework built on Playwright + TypeScript.
+
+Your job is to audit the codebase snapshot provided and produce a concrete improvement plan.
+
+Architectural rules you enforce:
+- RunRegistry is the single source of truth for run state (no parallel mutable state).
+- No shared mutable module-level variables across requests.
+- Tests never reference raw selectors — all selectors live in Page Object classes.
+- AI features are strictly opt-in (guarded by AI_ENABLED env var).
+- All environment variables are validated at startup via requireEnv().
+
+EXCEPTION: Markdown files (.md) in docs/memory/ are just documentation and are strictly EXEMPT from the 'RunRegistry is the single source of truth' and 'No shared mutable state' rules. Do not flag them as violations.
+
+Output format:
+Return a clear, numbered action plan. For each item state:
+  - Which file(s) to change
+  - What to change and why
+  - Acceptance criteria
+
+Be specific and actionable. Do not write code — that is the Engineer's job.`;
+
+async function runArchitect(snapshot) {
+  console.log('[Architect] Auditing codebase…');
+
+  const model = genAI.getGenerativeModel({
+    model: MODEL_ID,
+    systemInstruction: ARCHITECT_SYSTEM,
+    generationConfig: { maxOutputTokens: 4096, temperature: 0.3 },
+  });
+
+  const prompt = `Here is the current codebase snapshot:\n\n${snapshot}\n\nProduce your improvement plan now.`;
+  const result = await withRetry(() => model.generateContent(prompt));
+  const plan = result.response.text();
+
+  if (!plan) throw new Error('Architect returned an empty plan.');
+  console.log('[Architect] Plan received.\n');
+  console.log('─'.repeat(60));
+  console.log(plan);
+  console.log('─'.repeat(60) + '\n');
+  return plan;
+}
+
+// ─── Agent: Engineer ──────────────────────────────────────────────────────────
+
+const ENGINEER_SYSTEM = `You are a senior software engineer implementing a code improvement plan for an AI-powered QA automation framework.
+
+You will receive:
+1. A codebase snapshot (key files with their current contents).
+2. An Architect's improvement plan.
+
+Your task:
+Implement every item in the plan. Output ONLY a JSON array where each element is a file patch:
+
+[
+  {
+    "file": "relative/path/from/repo/root.ts",
+    "content": "<complete new file content as a string>"
+  }
+]
+
+Rules:
+- Output the JSON array and nothing else — no markdown fences, no explanation before or after.
+- Each "content" value is the COMPLETE file content (not a diff).
+- Only include files that actually need to change.
+- Preserve all existing behaviour unless the plan explicitly changes it.
+- Do not modify docs/memory/*.md files — they are documentation only.
+- The first character of your response MUST be '['.`;
+
+async function runEngineer(snapshot, plan) {
+  console.log('[Engineer] Implementing plan…');
+
+  const model = genAI.getGenerativeModel({
+    model: MODEL_ID,
+    systemInstruction: ENGINEER_SYSTEM,
+    // Fix #1: raise token limit so large JSON responses are never truncated.
+    generationConfig: { maxOutputTokens: 8192, temperature: 0.2 },
+  });
+
+  const prompt = `## Codebase snapshot\n\n${snapshot}\n\n## Architect's plan\n\n${plan}\n\nImplement all changes now. Output the JSON patch array only.`;
+  const result = await withRetry(() => model.generateContent(prompt));
+  const text = result.response.text();
+
+  if (!text) throw new Error('Engineer returned an empty response.');
+
+  // Fix #2: use regex to extract the JSON array before parsing,
+  // guarding against any stray preamble the model might emit.
+  const match = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+  const jsonStr = match ? match[0] : text;
+
+  // Fix #3: safe JSON parse — log and return empty array instead of crashing.
+  let patches;
+  try {
+    patches = JSON.parse(jsonStr);
+  } catch (err) {
+    console.error('[Engineer] Parse failed:', err.message);
+    console.error('[Engineer] Raw response (first 500 chars):', text.slice(0, 500));
+    return [];
+  }
+
+  if (!Array.isArray(patches)) {
+    console.error('[Engineer] Expected a JSON array but got:', typeof patches);
+    return [];
+  }
+
+  console.log(`[Engineer] ${patches.length} file patch(es) received.\n`);
+  return patches;
+}
+
+// ─── Applier ──────────────────────────────────────────────────────────────────
+
+function applyPatches(patches) {
+  if (patches.length === 0) {
+    console.log('[Applier] No patches to apply.');
+    return;
+  }
+
+  for (const patch of patches) {
+    if (!patch.file || typeof patch.content !== 'string') {
+      console.warn('[Applier] Skipping malformed patch entry:', JSON.stringify(patch).slice(0, 120));
+      continue;
+    }
+
+    // Safety: never let the model write outside the repo root.
+    const absPath = path.resolve(REPO_ROOT, patch.file);
+    if (!absPath.startsWith(REPO_ROOT + path.sep) && absPath !== REPO_ROOT) {
+      console.warn('[Applier] Blocked path traversal attempt:', patch.file);
+      continue;
+    }
+
+    // Never overwrite docs/memory markdown files — they are documentation only.
+    if (/^docs[/\\]memory[/\\].*\.md$/i.test(patch.file)) {
+      console.warn('[Applier] Skipping docs/memory file (exempt from patches):', patch.file);
+      continue;
+    }
+
+    try {
+      fs.mkdirSync(path.dirname(absPath), { recursive: true });
+      fs.writeFileSync(absPath, patch.content, 'utf8');
+      console.log('[Applier] Written:', patch.file);
+    } catch (err) {
+      console.error('[Applier] Failed to write', patch.file, '—', err.message);
+    }
+  }
+
+  console.log('\n[Applier] Done.');
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+async function main() {
+  console.log('[autonomous-run] Starting pipeline…\n');
+
+  const snapshot = buildCodebaseSnapshot();
+
+  const plan = await runArchitect(snapshot);
+  const patches = await runEngineer(snapshot, plan);
+  applyPatches(patches);
+
+  console.log('\n[autonomous-run] Pipeline complete.');
+}
+
+main().catch((err) => {
   console.error('[autonomous-run] Fatal error:', err);
   process.exit(1);
 });
